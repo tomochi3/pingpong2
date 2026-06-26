@@ -1,0 +1,34 @@
+{
+  "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+  "mode": "gameover",
+  "score": {
+    "player": 0,
+    "opponent": 7,
+    "target": 7
+  },
+  "player": {
+    "x": 66,
+    "y": 302,
+    "width": 20,
+    "height": 116,
+    "velocityY": 0
+  },
+  "opponent": {
+    "x": 1194,
+    "y": 282,
+    "width": 20,
+    "height": 116,
+    "velocityY": 0
+  },
+  "ball": {
+    "x": 640,
+    "y": 360,
+    "radius": 11,
+    "velocityX": 439,
+    "velocityY": -27,
+    "speed": 440
+  },
+  "rally": 0,
+  "lastPoint": "opponent",
+  "winner": "opponent"
+}
