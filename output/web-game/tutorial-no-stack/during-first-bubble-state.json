@@ -1,0 +1,98 @@
+{
+  "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+  "version": "v1.4.4",
+  "mode": "playing",
+  "score": {
+    "player": 0,
+    "opponent": 0,
+    "playerDisplay": "0.00",
+    "opponentDisplay": "0.00",
+    "targetGoals": 5
+  },
+  "goals": {
+    "player": 0,
+    "opponent": 0,
+    "total": 0,
+    "target": 5
+  },
+  "player": {
+    "x": 66,
+    "y": 449,
+    "width": 20,
+    "height": 116,
+    "velocityY": 1040,
+    "currentSpeed": 1040,
+    "upCharge": 0,
+    "downCharge": 1040,
+    "releaseShakePower": 0,
+    "releaseHeldVelocity": 1040
+  },
+  "opponent": {
+    "x": 1194,
+    "y": 243,
+    "width": 20,
+    "height": 116,
+    "velocityY": -64
+  },
+  "ball": {
+    "x": 895,
+    "y": 293,
+    "radius": 11,
+    "velocityX": 426,
+    "velocityY": -112,
+    "speed": 440,
+    "currentSpeed": 440,
+    "baseSpeed": 440,
+    "rallySpeedGain": 10,
+    "centerHitMaxSpeedBonus": 95,
+    "lastCenterHitFactor": 0,
+    "lastCenterHitSpeedBonus": 0,
+    "maxSpeed": 860,
+    "spinUnlimited": true,
+    "spinScoreReference": 1.6,
+    "spinReferenceSpeed": 900,
+    "spin": 0,
+    "curveStrength": 0,
+    "curveBoostThreshold": 1,
+    "verticalLimit": 760,
+    "arcDirection": 0,
+    "trailPoints": 0
+  },
+  "rally": 0,
+  "releaseMode": {
+    "active": true,
+    "threshold": 0,
+    "upCharge": 0,
+    "downCharge": 1040,
+    "shakeActive": false,
+    "shakePower": 0,
+    "heldVelocity": 1040
+  },
+  "tutorial": {
+    "active": true,
+    "activeIds": [
+      "move"
+    ],
+    "seenIds": [
+      "move"
+    ]
+  },
+  "lastPoint": null,
+  "lastPointAmount": 0,
+  "lastScoreReason": null,
+  "spinNotice": {
+    "active": false,
+    "side": null,
+    "amount": 0
+  },
+  "audio": {
+    "available": true,
+    "unlocked": true,
+    "eventCount": 0,
+    "lastCue": null,
+    "lastSpinAmount": 0,
+    "lastCueStrong": false,
+    "strongSpinThreshold": 0.8
+  },
+  "winner": null
+}

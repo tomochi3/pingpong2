@@ -112,6 +112,60 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Standard client run completed with no console error artifacts and showed `version:"v1.3.8"`.
   - Direction release check showed both-held charges around `1320/1300`, then releasing down set `downCharge:0` and `heldVelocity:-1700`; releasing all keys set both charges and held velocity to `0`.
   - Held-speed spin hit showed `upCharge:3040`, `downCharge:0`, `heldVelocity:-3040`, spin score `+1.60`, `curveStrength:1.21`, and a strong-spin audio cue.
+- Removed the spin cap and boosted high-spin curves:
+  - Bumped the displayed game version to `v1.3.9`.
+  - Replaced the old capped spin calculation with an uncapped reference-speed calculation, so stored release velocity can produce spin scores above `+1.60`.
+  - Added a `1.00` point curve boost threshold; spin at or above that threshold now gains extra curve strength.
+  - Replaced the fixed vertical velocity clamp with a curve-strength-based vertical limit so high spin can bend more dramatically without immediately flattening at the old limit.
+  - Exported `ball.spinUnlimited`, `ball.spinScoreReference`, `ball.spinReferenceSpeed`, `ball.curveBoostThreshold`, and `ball.verticalLimit` via `render_game_to_text`.
+- Verified with Playwright:
+  - Standard client run completed with no console error artifacts and showed `version:"v1.3.9"` and `spinUnlimited:true`.
+  - A `+1.64` spin produced `curveStrength:2.67` and `verticalLimit:1561`, exceeding the old `curveStrength` cap of `1.25`.
+  - A stronger held-speed hit produced `+2.49`, `curveStrength:4.32`, `verticalLimit:2057`, and a strong-spin audio cue.
+- Changed the end condition to total goals:
+  - Bumped the displayed game version to `v1.4.0`.
+  - Added separate goal counters for player/opponent/total and changed the match end condition to `5` total goals.
+  - Spin score still adds to the numeric score, but no longer ends the match by itself.
+  - During the post-goal `point` pause, player and opponent paddle updates now continue while the ball waits for the next serve.
+  - Updated the menu and point notice text from points-only wording to goal wording.
+  - Exported `goals` and `score.targetGoals` via `render_game_to_text`.
+- Verified with Playwright:
+  - Standard client run completed with no console error artifacts and showed `version:"v1.4.0"`, `score.targetGoals:5`, and `goals.total:0` after a spin-only score.
+  - Post-goal pause check reached `mode:"point"` with `goals.total:1`; holding down moved the paddle from `y:302` to `y:449` and updated speed/charge during the pause.
+  - Fast-forward check stayed playing at `goals.total:4` and entered `gameover` exactly at `goals.total:5`.
+- Added first-time tutorial bubbles:
+  - Bumped the displayed game version to `v1.4.1`.
+  - Added non-pausing explanatory bubbles that appear only once per action for movement acceleration, simultaneous release charging, release burst movement, rally ball-speed gain, spin scoring/curving, high-spin behavior, five-goal ending, and post-goal paddle control.
+  - Exported `tutorial.active`, `tutorial.activeIds`, and `tutorial.seenIds` via `render_game_to_text` for direct verification.
+- Verified with Playwright:
+  - Movement/release check showed `move`, `charge`, and `release` tutorials while the game stayed in active play.
+  - High-spin check produced a `+2.56` spin score, active spin/high-spin tutorial bubbles, and continued `mode:"playing"`.
+  - Post-goal check showed `goal-count` and `point-move` tutorials during `mode:"point"` without stopping paddle control.
+  - Standard client run completed with no console error artifacts and showed `version:"v1.4.1"` plus first-time tutorial IDs in state.
+- Added center-hit speed returns:
+  - Bumped the displayed game version to `v1.4.2`.
+  - Paddle hits now add up to `+95` ball speed based on how close the ball is to the paddle center, with a quadratic falloff toward the paddle edges.
+  - Added a first-time `center-hit` tutorial bubble and exported `ball.centerHitMaxSpeedBonus`, `ball.lastCenterHitFactor`, and `ball.lastCenterHitSpeedBonus`.
+- Verified with Playwright:
+  - Deterministic center hit returned the ball at speed `545` from base `440` plus rally gain `10` and center bonus `95`.
+  - The same check showed `lastCenterHitFactor:1`, `lastCenterHitSpeedBonus:95`, and the `center-hit` tutorial without pausing play.
+  - Standard client run completed with no console error artifacts and showed a center-influenced hit at `BALL 594` with `lastCenterHitFactor:0.84`.
+- Refined tutorial bubble flow:
+  - Bumped the displayed game version to `v1.4.3`.
+  - Limited tutorial display to one visible bubble at a time; new first-time tutorials are queued in `tutorial.pendingIds` until the current bubble disappears.
+  - Increased tutorial bubble text size from `15px` to `22.5px` and expanded bubble dimensions so the larger Japanese text fits.
+- Verified with Playwright:
+  - Rapid move/charge/release input showed exactly one active tutorial while `charge` and `release` waited in `pendingIds`.
+  - After the first bubble disappeared, `charge` displayed by itself; after the second, `release` displayed by itself.
+  - Standard client run completed with no console error artifacts and showed `version:"v1.4.3"` with one active bubble and queued pending tutorials.
+- Removed tutorial stacking/queueing:
+  - Bumped the displayed game version to `v1.4.4`.
+  - Removed the `tutorial.pendingIds` queue entirely; if a tutorial bubble is already visible, other first-time tutorial attempts are ignored and not marked as seen.
+  - The ignored tutorial can still appear later, but only when the bubble has disappeared and the player performs that first-time action again.
+- Verified with Playwright:
+  - Rapid move/charge/release input showed only the `move` bubble, with `charge` and `release` remaining unseen and no `pendingIds` in state.
+  - After the move bubble disappeared, repeating the simultaneous up/down action displayed `charge` for the first time.
+  - Standard client run completed with no console error artifacts and showed `version:"v1.4.4"` with only one active bubble.
 
 ## TODO
 

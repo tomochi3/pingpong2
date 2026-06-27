@@ -1,0 +1,107 @@
+{
+  "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+  "version": "v1.4.3",
+  "mode": "playing",
+  "score": {
+    "player": 0,
+    "opponent": 1.12,
+    "playerDisplay": "0.00",
+    "opponentDisplay": "1.12",
+    "targetGoals": 5
+  },
+  "goals": {
+    "player": 0,
+    "opponent": 1,
+    "total": 1,
+    "target": 5
+  },
+  "player": {
+    "x": 66,
+    "y": 570,
+    "width": 20,
+    "height": 116,
+    "velocityY": 0,
+    "currentSpeed": 0,
+    "upCharge": 0,
+    "downCharge": 3781,
+    "releaseShakePower": 0,
+    "releaseHeldVelocity": 3781
+  },
+  "opponent": {
+    "x": 1194,
+    "y": 326,
+    "width": 20,
+    "height": 116,
+    "velocityY": -27
+  },
+  "ball": {
+    "x": 933,
+    "y": 345,
+    "radius": 11,
+    "velocityX": 439,
+    "velocityY": -23,
+    "speed": 440,
+    "currentSpeed": 440,
+    "baseSpeed": 440,
+    "rallySpeedGain": 10,
+    "centerHitMaxSpeedBonus": 95,
+    "lastCenterHitFactor": 0,
+    "lastCenterHitSpeedBonus": 0,
+    "maxSpeed": 860,
+    "spinUnlimited": true,
+    "spinScoreReference": 1.6,
+    "spinReferenceSpeed": 900,
+    "spin": 0,
+    "curveStrength": 0,
+    "curveBoostThreshold": 1,
+    "verticalLimit": 760,
+    "arcDirection": 0,
+    "trailPoints": 0
+  },
+  "rally": 0,
+  "releaseMode": {
+    "active": true,
+    "threshold": 0,
+    "upCharge": 0,
+    "downCharge": 3781,
+    "shakeActive": false,
+    "shakePower": 0,
+    "heldVelocity": 3781
+  },
+  "tutorial": {
+    "active": true,
+    "activeIds": [
+      "charge"
+    ],
+    "pendingIds": [
+      "release",
+      "ball-speed",
+      "center-hit",
+      "spin",
+      "goal-count",
+      "point-move"
+    ],
+    "seenIds": [
+      "move",
+      "charge"
+    ]
+  },
+  "lastPoint": "opponent",
+  "lastPointAmount": 1,
+  "lastScoreReason": "miss",
+  "spinNotice": {
+    "active": false,
+    "side": "opponent",
+    "amount": 0.12
+  },
+  "audio": {
+    "available": true,
+    "unlocked": true,
+    "eventCount": 2,
+    "lastCue": "point",
+    "lastSpinAmount": 0,
+    "lastCueStrong": false,
+    "strongSpinThreshold": 0.8
+  },
+  "winner": null
+}

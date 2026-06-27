@@ -4,8 +4,9 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.3.8";
-  const SCORE_TO_WIN = 5;
+  const GAME_VERSION = "v1.4.4";
+  const GOALS_TO_END = 5;
+  const TUTORIAL_DURATION = 4.2;
   const PLAYER_MAX_SPEED = 900;
   const PLAYER_ACCEL = 1850;
   const PLAYER_BRAKE = 2300;
@@ -23,13 +24,16 @@
   const BALL_R = 11;
   const BALL_BASE_SPEED = 440;
   const RALLY_BALL_SPEED_GAIN = 10;
+  const CENTER_HIT_SPEED_BONUS = 95;
   const BALL_MAX_SPEED = 860;
-  const SPIN_SCORE_MAX = 1.6;
+  const SPIN_SCORE_REFERENCE = 1.6;
+  const SPIN_CURVE_BOOST_THRESHOLD = 1;
   const SPIN_ARC_ACCEL = 1250;
   const SPIN_DECAY = 0.32;
   const SPIN_ARC_DECAY = 0.3;
-  const MAX_BALL_VY = 760;
-  const MAX_SPIN_PADDLE_SPEED = PLAYER_MAX_SPEED;
+  const BALL_VY_BASE_LIMIT = 760;
+  const BALL_VY_CURVE_LIMIT_GAIN = 300;
+  const SPIN_REFERENCE_SPEED = PLAYER_MAX_SPEED;
   const STRONG_SPIN_SOUND_THRESHOLD = 0.8;
   const keys = new Set();
 
@@ -47,6 +51,15 @@
     lastScoreReason: null,
     winner: null,
     rally: 0,
+    goals: {
+      player: 0,
+      opponent: 0,
+      total: 0,
+    },
+    tutorial: {
+      seen: {},
+      bubbles: [],
+    },
     spinNotice: {
       timer: 0,
       amount: 0,
@@ -93,6 +106,8 @@
       spin: 0,
       curveStrength: 0,
       arcDirection: 0,
+      lastCenterHitFactor: 0,
+      lastCenterHitSpeedBonus: 0,
       trail: [],
     },
   };
@@ -123,6 +138,43 @@
 
   function isReleaseMode() {
     return state.rally >= RELEASE_RALLY_THRESHOLD;
+  }
+
+  function isMoveKey(code) {
+    return code === "ArrowUp" || code === "KeyW" || code === "ArrowDown" || code === "KeyS";
+  }
+
+  function isUpKey(code) {
+    return code === "ArrowUp" || code === "KeyW";
+  }
+
+  function isDownKey(code) {
+    return code === "ArrowDown" || code === "KeyS";
+  }
+
+  function activateTutorial(tutorial) {
+    state.tutorial.seen[tutorial.id] = true;
+    state.tutorial.bubbles = [{
+      ...tutorial,
+      lines: Array.isArray(tutorial.lines) ? tutorial.lines : [tutorial.lines],
+      timer: TUTORIAL_DURATION,
+      duration: TUTORIAL_DURATION,
+    }];
+  }
+
+  function showTutorial(id, lines, x, y, side = "left") {
+    if (state.tutorial.seen[id] || state.tutorial.bubbles.length) return false;
+
+    const tutorial = {
+      id,
+      lines: Array.isArray(lines) ? lines : [lines],
+      x,
+      y,
+      side,
+    };
+
+    activateTutorial(tutorial);
+    return true;
   }
 
   function resetReleaseCharges() {
@@ -277,6 +329,9 @@
   function resetScores() {
     state.player.score = 0;
     state.opponent.score = 0;
+    state.goals.player = 0;
+    state.goals.opponent = 0;
+    state.goals.total = 0;
     state.winner = null;
     state.lastPoint = null;
     state.lastPointAmount = 0;
@@ -297,6 +352,8 @@
     state.ball.spin = 0;
     state.ball.curveStrength = 0;
     state.ball.arcDirection = 0;
+    state.ball.lastCenterHitFactor = 0;
+    state.ball.lastCenterHitSpeedBonus = 0;
     state.ball.trail = [];
   }
 
@@ -324,18 +381,29 @@
   }
 
   function checkWinner() {
-    if (state.player.score < SCORE_TO_WIN && state.opponent.score < SCORE_TO_WIN) {
+    if (state.goals.total < GOALS_TO_END) {
       return false;
     }
 
     state.mode = "gameover";
-    state.winner = state.player.score > state.opponent.score ? "player" : "opponent";
+    state.winner = state.player.score === state.opponent.score
+      ? "draw"
+      : state.player.score > state.opponent.score ? "player" : "opponent";
     resetBall(state.winner === "player" ? -1 : 1);
     return true;
   }
 
   function awardPoint(side) {
     addScore(side, 1);
+    state.goals[side] += 1;
+    state.goals.total += 1;
+    showTutorial(
+      "goal-count",
+      ["ゴールだけを5回数えると終了", "スピン点は別で加算されます"],
+      FIELD_W / 2,
+      178,
+      "center"
+    );
     state.lastScoreReason = "miss";
     playPointSound(side);
 
@@ -364,7 +432,7 @@
       y: clamp(y - 36, 76, FIELD_H - 76),
     };
 
-    return checkWinner();
+    return false;
   }
 
   function rectCenterY(rect) {
@@ -390,28 +458,82 @@
     return Math.abs(heldVelocity) > Math.abs(paddle.vy) ? heldVelocity : paddle.vy;
   }
 
+  function spinCurveStrength(spinAmount, offset) {
+    const overOneBoost = spinAmount >= SPIN_CURVE_BOOST_THRESHOLD
+      ? 0.55 + (spinAmount - SPIN_CURVE_BOOST_THRESHOLD) * 1.25
+      : 0;
+    return spinAmount * 0.75 + overOneBoost + Math.abs(offset) * 0.18;
+  }
+
+  function ballVerticalLimit(curveStrength = state.ball.curveStrength) {
+    return BALL_VY_BASE_LIMIT + Math.max(0, curveStrength) * BALL_VY_CURVE_LIMIT_GAIN;
+  }
+
+  function centerHitFactor(offset) {
+    return clamp(1 - Math.abs(offset), 0, 1);
+  }
+
   function bounceFromPaddle(paddle, direction) {
     const ball = state.ball;
     const offset = clamp((ball.y - rectCenterY(paddle)) / (paddle.h / 2), -1, 1);
-    const speed = Math.min(ball.speed + RALLY_BALL_SPEED_GAIN, BALL_MAX_SPEED);
+    const centerFactor = centerHitFactor(offset);
+    const centerSpeedBonus = CENTER_HIT_SPEED_BONUS * centerFactor * centerFactor;
+    const speed = Math.min(ball.speed + RALLY_BALL_SPEED_GAIN + centerSpeedBonus, BALL_MAX_SPEED);
     const angle = offset * 0.88;
     const side = direction > 0 ? "player" : "opponent";
     const spinVelocity = spinVelocityForPaddle(paddle);
-    const spinPower = clamp(spinVelocity / MAX_SPIN_PADDLE_SPEED, -1, 1);
-    const spinAmount = round2(Math.abs(spinPower) * SPIN_SCORE_MAX);
-    const spinRatio = clamp(spinAmount / SPIN_SCORE_MAX, 0, 1);
+    const spinPower = spinVelocity / SPIN_REFERENCE_SPEED;
+    const spinAmount = round2(Math.abs(spinPower) * SPIN_SCORE_REFERENCE);
+    const curveStrength = spinCurveStrength(spinAmount, offset);
+    const verticalLimit = ballVerticalLimit(curveStrength);
 
     ball.speed = speed;
     ball.vx = Math.cos(angle) * speed * direction;
-    ball.vy = clamp(Math.sin(angle) * speed + spinVelocity * 0.16, -MAX_BALL_VY, MAX_BALL_VY);
-    ball.spin = clamp(spinPower * 1.35 + offset * 0.22, -1.65, 1.65);
-    ball.curveStrength = clamp(spinRatio * 1.2 + Math.abs(offset) * 0.18, 0, 1.25);
+    ball.vy = clamp(Math.sin(angle) * speed + spinVelocity * 0.16, -verticalLimit, verticalLimit);
+    ball.spin = spinPower * 1.35 + offset * 0.22;
+    ball.curveStrength = curveStrength;
     ball.arcDirection = Math.sign(ball.spin || spinPower || offset || 1);
+    ball.lastCenterHitFactor = centerFactor;
+    ball.lastCenterHitSpeedBonus = centerSpeedBonus;
     ball.trail = [{ x: ball.x, y: ball.y, strength: ball.curveStrength }];
     ball.x = direction > 0 ? paddle.x + paddle.w + ball.r : paddle.x - ball.r;
     state.rally += 1;
 
+    showTutorial(
+      "ball-speed",
+      ["打ち返すたびボール速度UP", "ラリーが続くほど速くなります"],
+      FIELD_W / 2,
+      FIELD_H - 178,
+      "center"
+    );
+    if (centerFactor >= 0.72) {
+      showTutorial(
+        "center-hit",
+        ["真ん中で当てるほど返球が速い", "芯を食うと大きく加速します"],
+        ball.x + (direction > 0 ? 98 : -98),
+        ball.y + 72,
+        direction > 0 ? "left" : "right"
+      );
+    }
     playPaddleSound(side, spinAmount, spinPower);
+    if (spinAmount > 0) {
+      showTutorial(
+        "spin",
+        ["保持している速度でスピン", "速いほど点数とカーブが大きい"],
+        ball.x + (direction > 0 ? 96 : -96),
+        ball.y - 78,
+        direction > 0 ? "left" : "right"
+      );
+    }
+    if (spinAmount >= SPIN_CURVE_BOOST_THRESHOLD) {
+      showTutorial(
+        "high-spin",
+        ["1.00以上のスピンは大きくうねる", "上限なしで点数も伸びます"],
+        FIELD_W / 2,
+        170,
+        "center"
+      );
+    }
     awardSpinScore(side, spinAmount, ball.x, ball.y);
   }
 
@@ -442,6 +564,13 @@
 
     if (upPressed || downPressed) {
       if (upPressed && downPressed) {
+        showTutorial(
+          "charge",
+          ["上下同時押しで両方チャージ", "パドルが震えながら速度を溜めます"],
+          player.x + player.w + 42,
+          player.y + player.h / 2,
+          "left"
+        );
         const chargePower = (player.upCharge + player.downCharge) / 2;
         const shakeRate = RELEASE_SHAKE_BASE_RATE + Math.sqrt(chargePower) * RELEASE_SHAKE_RATE_SCALE;
         const shakeSpeed = RELEASE_SHAKE_BASE_SPEED + chargePower * RELEASE_SHAKE_SPEED_SCALE;
@@ -531,13 +660,15 @@
   function updateBall(dt) {
     const ball = state.ball;
     const arc = ball.arcDirection * ball.curveStrength * SPIN_ARC_ACCEL;
+    const verticalLimit = ballVerticalLimit();
 
-    ball.vy = clamp(ball.vy + arc * dt, -MAX_BALL_VY, MAX_BALL_VY);
+    ball.vy = clamp(ball.vy + arc * dt, -verticalLimit, verticalLimit);
     ball.x += ball.vx * dt;
     ball.y += ball.vy * dt;
     if (Math.abs(ball.spin) > 0.05 || ball.curveStrength > 0.08) {
-      ball.trail.push({ x: ball.x, y: ball.y, strength: clamp(ball.curveStrength, 0.15, 1.25) });
-      if (ball.trail.length > 16) {
+      const trailLimit = Math.round(clamp(16 + ball.curveStrength * 4, 16, 52));
+      ball.trail.push({ x: ball.x, y: ball.y, strength: Math.max(ball.curveStrength, 0.15) });
+      while (ball.trail.length > trailLimit) {
         ball.trail.shift();
       }
     } else if (ball.trail.length) {
@@ -586,8 +717,20 @@
     if (state.spinNotice.timer > 0) {
       state.spinNotice.timer = Math.max(0, state.spinNotice.timer - step);
     }
+    updateTutorials(step);
 
     if (state.mode === "point") {
+      if (keys.has("ArrowUp") || keys.has("KeyW") || keys.has("ArrowDown") || keys.has("KeyS")) {
+        showTutorial(
+          "point-move",
+          ["ゴール後もパドル操作できます", "次のサーブに備えよう"],
+          FIELD_W / 2,
+          FIELD_H - 176,
+          "center"
+        );
+      }
+      updatePlayer(step);
+      updateOpponent(step);
       state.pointTimer -= step;
       if (state.pointTimer <= 0) {
         state.mode = "playing";
@@ -600,6 +743,12 @@
     updatePlayer(step);
     updateOpponent(step);
     updateBall(step);
+  }
+
+  function updateTutorials(dt) {
+    state.tutorial.bubbles = state.tutorial.bubbles
+      .map((bubble) => ({ ...bubble, timer: bubble.timer - dt }))
+      .filter((bubble) => bubble.timer > 0);
   }
 
   function drawRoundedRect(x, y, w, h, radius) {
@@ -787,7 +936,7 @@
   function drawPointNotice() {
     if (state.mode !== "point") return;
 
-    const sideLabel = state.lastPoint === "player" ? "あなたのポイント" : "相手のポイント";
+    const sideLabel = state.lastPoint === "player" ? "あなたのゴール" : "相手のゴール";
     const label = `${sideLabel} +${formatScore(state.lastPointAmount)}`;
     ctx.fillStyle = "rgba(249, 252, 253, 0.72)";
     ctx.fillRect(0, FIELD_H / 2 - 58, FIELD_W, 116);
@@ -796,6 +945,49 @@
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(label, FIELD_W / 2, FIELD_H / 2);
+  }
+
+  function drawTutorialBubbles() {
+    if (!state.tutorial.bubbles.length) return;
+
+    ctx.save();
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    state.tutorial.bubbles.forEach((bubble, index) => {
+      const alpha = clamp(Math.min(bubble.timer, bubble.duration - bubble.timer) / 0.35, 0, 1);
+      const fontSize = 22.5;
+      const lineHeight = 30;
+      const padX = 20;
+      const padY = 16;
+      ctx.font = `800 ${fontSize}px Inter, system-ui, sans-serif`;
+      const textWidth = bubble.lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
+      const w = clamp(textWidth + padX * 2, 280, 520);
+      const h = bubble.lines.length * lineHeight + padY * 2;
+      const stackedY = bubble.y + index * (h + 10);
+      let x = bubble.side === "right" ? bubble.x - w : bubble.x;
+      if (bubble.side === "center") x = bubble.x - w / 2;
+      x = clamp(x, 24, FIELD_W - w - 24);
+      const y = clamp(stackedY - h / 2, 56, FIELD_H - h - 92);
+
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "rgba(31, 42, 51, 0.92)";
+      drawRoundedRect(x, y, w, h, 8);
+      ctx.fillStyle = "#f9fcfd";
+      bubble.lines.forEach((line, lineIndex) => {
+        ctx.fillText(line, x + padX, y + padY + lineHeight / 2 + lineIndex * lineHeight);
+      });
+
+      const pointerX = clamp(bubble.x, x + 18, x + w - 18);
+      const pointerY = bubble.y < y + h / 2 ? y : y + h;
+      ctx.beginPath();
+      ctx.moveTo(pointerX - 8, pointerY);
+      ctx.lineTo(pointerX + 8, pointerY);
+      ctx.lineTo(bubble.x, bubble.y);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(31, 42, 51, 0.92)";
+      ctx.fill();
+    });
+    ctx.restore();
   }
 
   function drawHud() {
@@ -868,14 +1060,16 @@
     drawHud();
 
     if (state.mode === "menu") {
-      drawOverlay("PING PONG", "5.00点先取。最初から解放モードで勝負します。", "クリック / Spaceで開始");
+      drawOverlay("PING PONG", "5ゴールで終了。最初から解放モードで勝負します。", "クリック / Spaceで開始");
     } else if (state.mode === "paused") {
       drawOverlay("PAUSE", "ラリーはここで止まっています。", "P / Enter / Spaceで再開");
     } else if (state.mode === "gameover") {
       const won = state.winner === "player";
-      drawOverlay(won ? "YOU WIN" : "YOU LOSE", `${formatScore(state.player.score)} - ${formatScore(state.opponent.score)}`, "Spaceで再戦");
+      const title = state.winner === "draw" ? "DRAW" : won ? "YOU WIN" : "YOU LOSE";
+      drawOverlay(title, `${formatScore(state.player.score)} - ${formatScore(state.opponent.score)}`, "Spaceで再戦");
     }
 
+    drawTutorialBubbles();
     drawVersion();
   }
 
@@ -959,6 +1153,7 @@
   });
 
   window.addEventListener("keydown", (event) => {
+    const wasPressed = keys.has(event.code);
     keys.add(event.code);
 
     if (event.code === "Space") {
@@ -974,10 +1169,38 @@
     } else if (event.code === "KeyF") {
       toggleFullscreen();
     }
+
+    if (!wasPressed && isMoveKey(event.code) && (state.mode === "playing" || state.mode === "point")) {
+      showTutorial(
+        "move",
+        ["長押しでパドルが加速", "離した方向の速度は0になります"],
+        state.player.x + state.player.w + 46,
+        state.player.y + state.player.h / 2,
+        "left"
+      );
+    }
   });
 
   window.addEventListener("keyup", (event) => {
+    const hadUp = keys.has("ArrowUp") || keys.has("KeyW");
+    const hadDown = keys.has("ArrowDown") || keys.has("KeyS");
     keys.delete(event.code);
+    const hasUp = keys.has("ArrowUp") || keys.has("KeyW");
+    const hasDown = keys.has("ArrowDown") || keys.has("KeyS");
+
+    if (
+      isReleaseMode() &&
+      (state.mode === "playing" || state.mode === "point") &&
+      ((isUpKey(event.code) && hadDown && hasDown) || (isDownKey(event.code) && hadUp && hasUp))
+    ) {
+      showTutorial(
+        "release",
+        ["片方を離すとその方向は0", "押し続けた速度で一気に動きます"],
+        state.player.x + state.player.w + 48,
+        state.player.y + state.player.h / 2,
+        "left"
+      );
+    }
   });
 
   window.addEventListener("blur", () => {
@@ -1005,7 +1228,13 @@
         opponent: round2(state.opponent.score),
         playerDisplay: formatScore(state.player.score),
         opponentDisplay: formatScore(state.opponent.score),
-        target: SCORE_TO_WIN,
+        targetGoals: GOALS_TO_END,
+      },
+      goals: {
+        player: state.goals.player,
+        opponent: state.goals.opponent,
+        total: state.goals.total,
+        target: GOALS_TO_END,
       },
       player: {
         x: Math.round(state.player.x),
@@ -1036,9 +1265,17 @@
         currentSpeed: currentBallSpeed(),
         baseSpeed: BALL_BASE_SPEED,
         rallySpeedGain: RALLY_BALL_SPEED_GAIN,
+        centerHitMaxSpeedBonus: CENTER_HIT_SPEED_BONUS,
+        lastCenterHitFactor: round2(state.ball.lastCenterHitFactor),
+        lastCenterHitSpeedBonus: Math.round(state.ball.lastCenterHitSpeedBonus),
         maxSpeed: BALL_MAX_SPEED,
+        spinUnlimited: true,
+        spinScoreReference: SPIN_SCORE_REFERENCE,
+        spinReferenceSpeed: SPIN_REFERENCE_SPEED,
         spin: round2(state.ball.spin),
         curveStrength: round2(state.ball.curveStrength),
+        curveBoostThreshold: SPIN_CURVE_BOOST_THRESHOLD,
+        verticalLimit: Math.round(ballVerticalLimit()),
         arcDirection: state.ball.arcDirection,
         trailPoints: state.ball.trail.length,
       },
@@ -1051,6 +1288,11 @@
         shakeActive: state.player.releaseShakePower > 0,
         shakePower: Math.round(state.player.releaseShakePower),
         heldVelocity: Math.round(state.player.releaseHeldVelocity),
+      },
+      tutorial: {
+        active: state.tutorial.bubbles.length > 0,
+        activeIds: state.tutorial.bubbles.map((bubble) => bubble.id),
+        seenIds: Object.keys(state.tutorial.seen),
       },
       lastPoint: state.lastPoint,
       lastPointAmount: round2(state.lastPointAmount),

@@ -1,0 +1,108 @@
+{
+  "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+  "version": "v1.4.3",
+  "mode": "playing",
+  "score": {
+    "player": 21.26,
+    "opponent": 1.21,
+    "playerDisplay": "21.26",
+    "opponentDisplay": "1.21",
+    "targetGoals": 5
+  },
+  "goals": {
+    "player": 0,
+    "opponent": 1,
+    "total": 1,
+    "target": 5
+  },
+  "player": {
+    "x": 66,
+    "y": 570,
+    "width": 20,
+    "height": 116,
+    "velocityY": 0,
+    "currentSpeed": 0,
+    "upCharge": 0,
+    "downCharge": 14801,
+    "releaseShakePower": 0,
+    "releaseHeldVelocity": 14801
+  },
+  "opponent": {
+    "x": 1194,
+    "y": 547,
+    "width": 20,
+    "height": 116,
+    "velocityY": 40
+  },
+  "ball": {
+    "x": 593,
+    "y": 556,
+    "radius": 11,
+    "velocityX": 419,
+    "velocityY": -790,
+    "speed": 486,
+    "currentSpeed": 486,
+    "baseSpeed": 440,
+    "rallySpeedGain": 10,
+    "centerHitMaxSpeedBonus": 95,
+    "lastCenterHitFactor": 0.4,
+    "lastCenterHitSpeedBonus": 15,
+    "maxSpeed": 860,
+    "spinUnlimited": true,
+    "spinScoreReference": 1.6,
+    "spinReferenceSpeed": 900,
+    "spin": 2.97,
+    "curveStrength": 10.24,
+    "curveBoostThreshold": 1,
+    "verticalLimit": 3831,
+    "arcDirection": 1,
+    "trailPoints": 52
+  },
+  "rally": 2,
+  "releaseMode": {
+    "active": true,
+    "threshold": 0,
+    "upCharge": 0,
+    "downCharge": 14801,
+    "shakeActive": false,
+    "shakePower": 0,
+    "heldVelocity": 14801
+  },
+  "tutorial": {
+    "active": true,
+    "activeIds": [
+      "release"
+    ],
+    "pendingIds": [
+      "ball-speed",
+      "center-hit",
+      "spin",
+      "goal-count",
+      "point-move",
+      "high-spin"
+    ],
+    "seenIds": [
+      "move",
+      "charge",
+      "release"
+    ]
+  },
+  "lastPoint": "player",
+  "lastPointAmount": 21.26,
+  "lastScoreReason": "spin",
+  "spinNotice": {
+    "active": false,
+    "side": "player",
+    "amount": 21.26
+  },
+  "audio": {
+    "available": true,
+    "unlocked": true,
+    "eventCount": 4,
+    "lastCue": "strong-spin-hit",
+    "lastSpinAmount": 21.26,
+    "lastCueStrong": true,
+    "strongSpinThreshold": 0.8
+  },
+  "winner": null
+}
