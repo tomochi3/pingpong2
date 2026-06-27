@@ -1,0 +1,55 @@
+{
+  "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+  "version": "v1.3.0",
+  "mode": "playing",
+  "score": {
+    "player": 0,
+    "opponent": 0,
+    "playerDisplay": "0.00",
+    "opponentDisplay": "0.00",
+    "target": 7
+  },
+  "player": {
+    "x": 66,
+    "y": 352,
+    "width": 20,
+    "height": 116,
+    "velocityY": 417,
+    "currentSpeed": 417
+  },
+  "opponent": {
+    "x": 1194,
+    "y": 288,
+    "width": 20,
+    "height": 116,
+    "velocityY": -36
+  },
+  "ball": {
+    "x": 770,
+    "y": 335,
+    "radius": 11,
+    "velocityX": 432,
+    "velocityY": -83,
+    "speed": 440,
+    "spin": 0
+  },
+  "rally": 0,
+  "lastPoint": null,
+  "lastPointAmount": 0,
+  "lastScoreReason": null,
+  "spinNotice": {
+    "active": false,
+    "side": null,
+    "amount": 0
+  },
+  "audio": {
+    "available": true,
+    "unlocked": true,
+    "eventCount": 0,
+    "lastCue": null,
+    "lastSpinAmount": 0,
+    "lastCueStrong": false,
+    "strongSpinThreshold": 0.8
+  },
+  "winner": null
+}

@@ -32,6 +32,12 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Normal centered hit recorded `lastCue:"paddle-hit"` with `lastCueStrong:false`.
   - Strong spin collision recorded `lastCue:"strong-spin-hit"` with `lastSpinAmount:0.82` and `lastCueStrong:true`.
   - Standard game client run after audio addition recorded sound events and no console error artifacts.
+- Added a small speed HUD at the bottom center showing the player's current paddle speed.
+- Added small corner version text `v1.3.0` and exported `version` plus `player.currentSpeed` from `render_game_to_text`.
+- Verified with Playwright:
+  - While holding `ArrowDown`, `currentSpeed` reached 417 in JSON and the HUD visibly showed a live speed value.
+  - Version text appeared in the bottom-right corner.
+  - Mobile viewport remained within 390px width.
 
 ## TODO
 

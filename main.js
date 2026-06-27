@@ -4,6 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
+  const GAME_VERSION = "v1.3.0";
   const SCORE_TO_WIN = 7;
   const PLAYER_MAX_SPEED = 900;
   const PLAYER_ACCEL = 1850;
@@ -92,6 +93,10 @@
 
   function formatScore(value) {
     return round2(value).toFixed(2);
+  }
+
+  function currentPlayerSpeed() {
+    return Math.round(Math.abs(state.player.vy));
   }
 
   function approach(value, target, amount) {
@@ -648,6 +653,36 @@
     ctx.fillText(label, FIELD_W / 2, FIELD_H / 2);
   }
 
+  function drawHud() {
+    const x = FIELD_W / 2 - 85;
+    const y = FIELD_H - 82;
+
+    ctx.save();
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(31, 42, 51, 0.1)";
+    drawRoundedRect(x, y, 170, 46, 8);
+
+    ctx.fillStyle = "#607580";
+    ctx.font = "700 13px Inter, system-ui, sans-serif";
+    ctx.fillText("SPEED", x + 16, y + 18);
+
+    ctx.fillStyle = "#1f2a33";
+    ctx.font = "800 24px Inter, system-ui, sans-serif";
+    ctx.fillText(String(currentPlayerSpeed()), x + 73, y + 18);
+    ctx.restore();
+  }
+
+  function drawVersion() {
+    ctx.save();
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = "rgba(31, 42, 51, 0.36)";
+    ctx.font = "700 13px Inter, system-ui, sans-serif";
+    ctx.fillText(GAME_VERSION, FIELD_W - 20, FIELD_H - 14);
+    ctx.restore();
+  }
+
   function render() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, FIELD_W, FIELD_H);
@@ -658,6 +693,7 @@
     drawBall();
     drawSpinNotice();
     drawPointNotice();
+    drawHud();
 
     if (state.mode === "menu") {
       drawOverlay("PING PONG", "7.00点先取。速いパドルほど強い回転になります。", "クリック / Spaceで開始");
@@ -667,6 +703,8 @@
       const won = state.winner === "player";
       drawOverlay(won ? "YOU WIN" : "YOU LOSE", `${formatScore(state.player.score)} - ${formatScore(state.opponent.score)}`, "Spaceで再戦");
     }
+
+    drawVersion();
   }
 
   function frame(now) {
@@ -788,6 +826,7 @@
   window.render_game_to_text = () => {
     const payload = {
       coordinateSystem: "origin top-left, x right, y down, logical canvas 1280x720",
+      version: GAME_VERSION,
       mode: state.mode,
       score: {
         player: round2(state.player.score),
@@ -802,6 +841,7 @@
         width: state.player.w,
         height: state.player.h,
         velocityY: Math.round(state.player.vy),
+        currentSpeed: currentPlayerSpeed(),
       },
       opponent: {
         x: Math.round(state.opponent.x),
