@@ -301,6 +301,19 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Pressing `E` toggles easy mode OFF, and pressing `E` again toggles it back ON.
   - Starting play after the default ON state keeps easy mode active and aligns the paddle center with the ball y-position.
   - Visual check confirmed the menu shows `E: 簡単モード ON（初期ON）` without layout issues.
+- Refined easy-mode charge and spin rules:
+  - Bumped the displayed game version to `v1.7.2`.
+  - Removed the easy-mode exception that auto-hit while actively charging; easy mode now still misses if the player keeps holding charge through contact.
+  - Added `smashStoredSpinVelocity` so vertical spin is stored only while the smash charge is being held.
+  - Changed hit spin calculation so normal movement/up-down acceleration alone no longer creates spin; stored charge spin is applied only after releasing the charge and hitting during the ready window.
+  - Updated the first-time smash tutorial and `readme.md` wording for the new charge/spin rule.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Easy mode held-charge scenario missed and produced an opponent goal while preserving stored charge/spin state (`smashCharge:77`, `storedSpinVelocity:3420`).
+  - Easy mode vertical-only movement returned the ball but produced no spin/curve (`lastSpinVelocity:0`, `spin:0`, `curveStrength:0`) despite large down acceleration.
+  - Easy mode charge-plus-down then release returned the ball with stored spin (`lastSpinVelocity:360`, `spin:0.45`, `curveStrength:0.39`, spin score `+0.64`).
+  - Standard web-game smoke test completed with no game console error artifacts and showed `version:"v1.7.2"`.
+  - Visual check confirmed the updated tutorial text and spin award on a released charged hit.
 
 ## TODO
 

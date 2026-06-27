@@ -4,7 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.7.1";
+  const GAME_VERSION = "v1.7.2";
   const GOALS_TO_END = 5;
   const TUTORIAL_DURATION = 4.2;
   const PLAYER_MAX_SPEED = 900;
@@ -121,6 +121,7 @@
       smashReadyTimer: 0,
       smashLastCharge: 0,
       smashLastSpeedBonus: 0,
+      smashStoredSpinVelocity: 0,
       smashReleaseSpinVelocity: 0,
       smashPressedLastFrame: false,
       releaseShakePhase: 0,
@@ -140,6 +141,7 @@
       smashReadyTimer: 0,
       smashLastCharge: 0,
       smashLastSpeedBonus: 0,
+      smashStoredSpinVelocity: 0,
       smashReleaseSpinVelocity: 0,
       smashPressedLastFrame: false,
       releaseShakePhase: 0,
@@ -390,6 +392,7 @@
     paddle.smashReadyTimer = 0;
     paddle.smashLastCharge = 0;
     paddle.smashLastSpeedBonus = 0;
+    paddle.smashStoredSpinVelocity = 0;
     paddle.smashReleaseSpinVelocity = 0;
     paddle.smashPressedLastFrame = false;
   }
@@ -631,7 +634,8 @@
     if (state.mode !== "playing" && state.mode !== "point") return;
 
     paddle.smashLastCharge = paddle.smashCharge;
-    paddle.smashReleaseSpinVelocity = spinVelocityForPaddle(paddle);
+    paddle.smashReleaseSpinVelocity = paddle.smashStoredSpinVelocity || 0;
+    paddle.smashStoredSpinVelocity = 0;
     paddle.smashCharge = 0;
     paddle.smashLastSpeedBonus = 0;
     paddle.smashReadyTimer = paddle.smashLastCharge >= SMASH_MIN_CHARGE ? SMASH_RELEASE_WINDOW : 0;
@@ -747,12 +751,19 @@
   }
 
   function spinVelocityForPaddle(paddle) {
+    return paddle.smashReadyTimer > 0 ? paddle.smashReleaseSpinVelocity || 0 : 0;
+  }
+
+  function currentSpinChargeVelocity(paddle) {
     const heldVelocity = paddle.releaseHeldVelocity || 0;
-    const releaseSpinVelocity = paddle.smashReadyTimer > 0 ? paddle.smashReleaseSpinVelocity || 0 : 0;
-    const strongestStoredVelocity = Math.abs(releaseSpinVelocity) > Math.abs(heldVelocity)
-      ? releaseSpinVelocity
-      : heldVelocity;
-    return Math.abs(strongestStoredVelocity) > Math.abs(paddle.vy) ? strongestStoredVelocity : paddle.vy;
+    return Math.abs(heldVelocity) > Math.abs(paddle.vy) ? heldVelocity : paddle.vy;
+  }
+
+  function storeSmashSpinVelocity(paddle) {
+    const spinVelocity = currentSpinChargeVelocity(paddle);
+    if (Math.abs(spinVelocity) > Math.abs(paddle.smashStoredSpinVelocity || 0)) {
+      paddle.smashStoredSpinVelocity = spinVelocity;
+    }
   }
 
   function spinCurveStrength(spinAmount, offset) {
@@ -777,6 +788,7 @@
       paddle.smashCharge += SMASH_CHARGE_ACCEL * dt;
       paddle.smashReadyTimer = 0;
       paddle.smashReleaseSpinVelocity = 0;
+      storeSmashSpinVelocity(paddle);
       paddle.smashPressedLastFrame = true;
       return;
     }
@@ -802,12 +814,7 @@
   }
 
   function paddleCanHitBall(paddle) {
-    return isEasyModePaddle(paddle) || paddle.smashCharge <= 0;
-  }
-
-  function prepareEasyPaddleHit(paddle) {
-    if (!isEasyModePaddle(paddle) || paddle.smashCharge <= 0) return;
-    armSmashReleaseForPaddle(paddle);
+    return paddle.smashCharge <= 0;
   }
 
   function bounceFromPaddle(paddle, direction) {
@@ -1043,7 +1050,6 @@
     if (playerCollision.hit) {
       if (paddleCanHitBall(state.player)) {
         ball.y = playerCollision.y;
-        prepareEasyPaddleHit(state.player);
         bounceFromPaddle(state.player, 1);
       }
       if (state.mode === "gameover") return;
@@ -1587,7 +1593,7 @@
     const paddle = sideToPaddle(side);
     showTutorial(
       "smash",
-      ["溜め中だけ球を通す", "離すと強打"],
+      ["溜め中は球を通す", "上下加速で回転ため"],
       paddle === state.opponent ? paddle.x - 52 : paddle.x + paddle.w + 52,
       paddle.y + paddle.h / 2 + 52,
       paddle === state.opponent ? "right" : "left"
@@ -1735,6 +1741,7 @@
       smashReadyTimer: paddle.smashReadyTimer,
       smashLastCharge: paddle.smashLastCharge,
       smashLastSpeedBonus: paddle.smashLastSpeedBonus,
+      smashStoredSpinVelocity: paddle.smashStoredSpinVelocity,
       smashReleaseSpinVelocity: paddle.smashReleaseSpinVelocity,
       smashPressedLastFrame: paddle.smashPressedLastFrame,
       releaseShakePhase: paddle.releaseShakePhase,
@@ -2034,6 +2041,7 @@
         smashReadyTimer: round2(state.player.smashReadyTimer),
         smashLastCharge: Math.round(state.player.smashLastCharge),
         smashLastSpeedBonus: Math.round(state.player.smashLastSpeedBonus),
+        smashStoredSpinVelocity: Math.round(state.player.smashStoredSpinVelocity),
         smashReleaseSpinVelocity: Math.round(state.player.smashReleaseSpinVelocity),
         releaseShakePower: Math.round(state.player.releaseShakePower),
         releaseHeldVelocity: Math.round(state.player.releaseHeldVelocity),
@@ -2052,6 +2060,7 @@
         smashReadyTimer: round2(state.opponent.smashReadyTimer),
         smashLastCharge: Math.round(state.opponent.smashLastCharge),
         smashLastSpeedBonus: Math.round(state.opponent.smashLastSpeedBonus),
+        smashStoredSpinVelocity: Math.round(state.opponent.smashStoredSpinVelocity),
         smashReleaseSpinVelocity: Math.round(state.opponent.smashReleaseSpinVelocity),
         releaseShakePower: Math.round(state.opponent.releaseShakePower),
         releaseHeldVelocity: Math.round(state.opponent.releaseHeldVelocity),
@@ -2107,6 +2116,7 @@
         readyTimer: round2(state.player.smashReadyTimer),
         lastCharge: Math.round(state.player.smashLastCharge),
         lastSpeedBonus: Math.round(state.player.smashLastSpeedBonus),
+        storedSpinVelocity: Math.round(state.player.smashStoredSpinVelocity),
         releaseSpinVelocity: Math.round(state.player.smashReleaseSpinVelocity),
         releaseWindow: SMASH_RELEASE_WINDOW,
       },
