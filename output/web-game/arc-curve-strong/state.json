@@ -1,0 +1,90 @@
+[
+  {
+    "t": 100,
+    "x": 179,
+    "y": 399,
+    "velocityY": 23,
+    "spin": -0.39,
+    "curveStrength": 0.71,
+    "arcDirection": -1,
+    "trailPoints": 16,
+    "score": 0.82
+  },
+  {
+    "t": 200,
+    "x": 218,
+    "y": 393,
+    "velocityY": -93,
+    "spin": -0.34,
+    "curveStrength": 0.67,
+    "arcDirection": -1,
+    "trailPoints": 16,
+    "score": 0.82
+  },
+  {
+    "t": 300,
+    "x": 257,
+    "y": 372,
+    "velocityY": -202,
+    "spin": -0.3,
+    "curveStrength": 0.63,
+    "arcDirection": -1,
+    "trailPoints": 16,
+    "score": 0.82
+  },
+  {
+    "t": 400,
+    "x": 287,
+    "y": 348,
+    "velocityY": -280,
+    "spin": -0.27,
+    "curveStrength": 0.6,
+    "arcDirection": -1,
+    "trailPoints": 16,
+    "score": 0.82
+  },
+  {
+    "t": 500,
+    "x": 329,
+    "y": 299,
+    "velocityY": -383,
+    "spin": -0.22,
+    "curveStrength": 0.56,
+    "arcDirection": -1,
+    "trailPoints": 16,
+    "score": 0.82
+  },
+  {
+    "t": 600,
+    "x": 358,
+    "y": 257,
+    "velocityY": -452,
+    "spin": -0.19,
+    "curveStrength": 0.53,
+    "arcDirection": -1,
+    "trailPoints": 16,
+    "score": 0.82
+  },
+  {
+    "t": 700,
+    "x": 400,
+    "y": 186,
+    "velocityY": -542,
+    "spin": -0.15,
+    "curveStrength": 0.49,
+    "arcDirection": -1,
+    "trailPoints": 16,
+    "score": 0.82
+  },
+  {
+    "t": 800,
+    "x": 430,
+    "y": 128,
+    "velocityY": -602,
+    "spin": -0.11,
+    "curveStrength": 0.46,
+    "arcDirection": -1,
+    "trailPoints": 16,
+    "score": 0.82
+  }
+]

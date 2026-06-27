@@ -46,6 +46,14 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
 - Verified with Playwright:
   - Strong spin scenario with `+0.82` spin score kept `curveStrength` around `0.70 -> 0.42`, maintained 16 trail points, and flipped vertical velocity from positive to negative over the sampled path.
   - Standard game client run completed with no console error artifacts and showed `version:"v1.3.1"` in state.
+- Changed spin movement from wobble to a smooth arc:
+  - Bumped the displayed game version to `v1.3.2`.
+  - Replaced the sinusoidal wave force with a consistent `arcDirection` force, so a spun ball bends continuously along an arc.
+  - Kept curve strength proportional to spin amount and retained the trail to make the arc readable.
+  - Exported `ball.arcDirection` via `render_game_to_text`.
+- Verified with Playwright:
+  - Strong spin scenario with `+0.82` kept `arcDirection:-1`, `curveStrength` around `0.71 -> 0.46`, and vertical velocity moved steadily from `23` to `-602`, producing a clear upward arc.
+  - Standard game client run completed with no console error artifacts and showed `version:"v1.3.2"` in state.
 
 ## TODO
 
