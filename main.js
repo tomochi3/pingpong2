@@ -19,7 +19,7 @@
   const SPIN_DECAY = 0.88;
   const MAX_BALL_VY = 660;
   const MAX_SPIN_PADDLE_SPEED = PLAYER_MAX_SPEED;
-  const STRONG_SPIN_SOUND_THRESHOLD = 1.0;
+  const STRONG_SPIN_SOUND_THRESHOLD = 0.8;
   const keys = new Set();
 
   let lastTime = 0;
@@ -293,6 +293,7 @@
   function awardPoint(side) {
     addScore(side, 1);
     state.lastScoreReason = "miss";
+    playPointSound(side);
 
     state.rally = 0;
 
@@ -351,6 +352,7 @@
     ball.x = direction > 0 ? paddle.x + paddle.w + ball.r : paddle.x - ball.r;
     state.rally += 1;
 
+    playPaddleSound(side, spinAmount, spinPower);
     awardSpinScore(side, spinAmount, ball.x, ball.y);
   }
 
@@ -700,6 +702,8 @@
   }
 
   function handleStartResume() {
+    resumeAudio();
+
     if (state.mode === "menu" || state.mode === "gameover") {
       startGame();
     } else if (state.mode === "paused") {
@@ -718,6 +722,7 @@
   }
 
   canvas.addEventListener("pointerdown", (event) => {
+    resumeAudio();
     canvas.setPointerCapture(event.pointerId);
     pointerY = canvasPoint(event).y;
     handleStartResume();
@@ -748,10 +753,13 @@
 
     if (event.code === "Space") {
       event.preventDefault();
+      resumeAudio();
       handleStartResume();
     } else if (event.code === "KeyP" || event.code === "Enter") {
+      resumeAudio();
       togglePause();
     } else if (event.code === "KeyR") {
+      resumeAudio();
       startGame();
     } else if (event.code === "KeyF") {
       toggleFullscreen();
@@ -819,6 +827,15 @@
         active: state.spinNotice.timer > 0,
         side: state.spinNotice.side,
         amount: round2(state.spinNotice.amount),
+      },
+      audio: {
+        available: state.audio.available,
+        unlocked: state.audio.unlocked,
+        eventCount: state.audio.eventCount,
+        lastCue: state.audio.lastCue,
+        lastSpinAmount: round2(state.audio.lastSpinAmount),
+        lastCueStrong: state.audio.lastCueStrong,
+        strongSpinThreshold: STRONG_SPIN_SOUND_THRESHOLD,
       },
       winner: state.winner,
     };

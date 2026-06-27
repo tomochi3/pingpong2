@@ -23,6 +23,15 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Deterministic collision test produced a `+0.66` player spin award from paddle velocity 493 and changed the ball's vertical velocity as spin curved it.
   - Mobile viewport remained within 390px width after the two-decimal scoreboard change.
   - Decimal scoring gameover reached `opponent: 7.81` and displayed the final score correctly.
+- Added Web Audio sound effects:
+  - Normal paddle hit plays a short pong hit.
+  - Strong spin hit at `+0.80` spin score or higher plays a distinct layered spin sound.
+  - Miss/point scoring plays a separate point sound.
+  - Audio unlocks on click/Space/P/Enter/R user gestures to satisfy browser autoplay rules.
+- Verified audio cues with Playwright state logs:
+  - Normal centered hit recorded `lastCue:"paddle-hit"` with `lastCueStrong:false`.
+  - Strong spin collision recorded `lastCue:"strong-spin-hit"` with `lastSpinAmount:0.82` and `lastCueStrong:true`.
+  - Standard game client run after audio addition recorded sound events and no console error artifacts.
 
 ## TODO
 

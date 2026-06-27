@@ -1,0 +1,74 @@
+{
+  "normal": {
+    "name": "normal-hit",
+    "score": {
+      "player": 0,
+      "opponent": 0,
+      "playerDisplay": "0.00",
+      "opponentDisplay": "0.00",
+      "target": 7
+    },
+    "player": {
+      "x": 66,
+      "y": 302,
+      "width": 20,
+      "height": 116,
+      "velocityY": 0
+    },
+    "ball": {
+      "x": 163,
+      "y": 360,
+      "radius": 11,
+      "velocityX": 464,
+      "velocityY": 0,
+      "speed": 464,
+      "spin": 0
+    },
+    "lastPointAmount": 0,
+    "audio": {
+      "available": true,
+      "unlocked": true,
+      "eventCount": 1,
+      "lastCue": "paddle-hit",
+      "lastSpinAmount": 0,
+      "lastCueStrong": false,
+      "strongSpinThreshold": 0.8
+    }
+  },
+  "strong": {
+    "name": "strong-spin-hit",
+    "score": {
+      "player": 0.82,
+      "opponent": 0,
+      "playerDisplay": "0.82",
+      "opponentDisplay": "0.00",
+      "target": 7
+    },
+    "player": {
+      "x": 66,
+      "y": 53,
+      "width": 20,
+      "height": 116,
+      "velocityY": -188
+    },
+    "ball": {
+      "x": 208,
+      "y": 464,
+      "radius": 11,
+      "velocityX": 296,
+      "velocityY": 265,
+      "speed": 464,
+      "spin": 0
+    },
+    "lastPointAmount": 0.82,
+    "audio": {
+      "available": true,
+      "unlocked": true,
+      "eventCount": 1,
+      "lastCue": "strong-spin-hit",
+      "lastSpinAmount": 0.82,
+      "lastCueStrong": true,
+      "strongSpinThreshold": 0.8
+    }
+  }
+}
