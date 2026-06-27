@@ -54,6 +54,27 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
 - Verified with Playwright:
   - Strong spin scenario with `+0.82` kept `arcDirection:-1`, `curveStrength` around `0.71 -> 0.46`, and vertical velocity moved steadily from `23` to `-602`, producing a clear upward arc.
   - Standard game client run completed with no console error artifacts and showed `version:"v1.3.2"` in state.
+- Added release mode:
+  - Bumped the displayed game version to `v1.3.3`.
+  - When `rally >= 2`, `releaseMode.active` becomes true and the player's speed cap is removed for keyboard movement.
+  - During release mode, holding up and down together charges both `upCharge` and `downCharge`; while both are held, the opposing charges cancel.
+  - Releasing one direction applies the remaining held direction's stored charge immediately, enabling high-speed movement.
+  - HUD now shows `RELEASE` plus current `UP`/`DOWN` charges when active.
+  - Exported `releaseMode`, `player.upCharge`, and `player.downCharge` via `render_game_to_text`.
+- Verified with Playwright:
+  - Deterministic rally reached `rally:2` and `releaseMode.active:true`.
+  - Holding up+down charged both sides to `1440/1440` with speed `0`.
+  - Releasing up while holding down produced down velocity `1660`.
+  - Standard game client run completed with no console error artifacts and showed `version:"v1.3.3"` in state.
+- Added gradual ball speed gain on sustained rallies:
+  - Bumped the displayed game version to `v1.3.4`.
+  - Added `BALL_BASE_SPEED`, `RALLY_BALL_SPEED_GAIN`, and `BALL_MAX_SPEED`.
+  - Each successful paddle return now increases ball speed by `+10`, from `440` up to `860`.
+  - Exported `ball.baseSpeed`, `ball.rallySpeedGain`, and `ball.maxSpeed` via `render_game_to_text`.
+- Verified with Playwright:
+  - Deterministic rally showed ball speed `440 -> 450 -> 460` as rally count advanced `0 -> 1 -> 2`.
+  - Point reset returned ball speed to `440`.
+  - Standard game client run completed with no console error artifacts and showed `version:"v1.3.4"` in state.
 
 ## TODO
 

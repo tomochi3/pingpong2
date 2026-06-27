@@ -4,17 +4,24 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.3.2";
+  const GAME_VERSION = "v1.3.4";
   const SCORE_TO_WIN = 7;
   const PLAYER_MAX_SPEED = 900;
   const PLAYER_ACCEL = 1850;
   const PLAYER_BRAKE = 2300;
+  const RELEASE_RALLY_THRESHOLD = 2;
+  const RELEASE_CHARGE_ACCEL = 2400;
+  const RELEASE_CHARGE_DECAY = 1800;
+  const RELEASE_NEUTRAL_BRAKE = 4200;
   const AI_MAX_SPEED = 780;
   const AI_ACCEL = 1500;
   const AI_BRAKE = 1900;
   const PADDLE_W = 20;
   const PADDLE_H = 116;
   const BALL_R = 11;
+  const BALL_BASE_SPEED = 440;
+  const RALLY_BALL_SPEED_GAIN = 10;
+  const BALL_MAX_SPEED = 860;
   const SPIN_SCORE_MAX = 1.6;
   const SPIN_ARC_ACCEL = 1250;
   const SPIN_DECAY = 0.32;
@@ -60,6 +67,8 @@
       h: PADDLE_H,
       score: 0,
       vy: 0,
+      upCharge: 0,
+      downCharge: 0,
     },
     opponent: {
       x: FIELD_W - 66 - PADDLE_W,
@@ -101,6 +110,15 @@
 
   function currentPlayerSpeed() {
     return Math.round(Math.abs(state.player.vy));
+  }
+
+  function isReleaseMode() {
+    return state.rally >= RELEASE_RALLY_THRESHOLD;
+  }
+
+  function resetReleaseCharges() {
+    state.player.upCharge = 0;
+    state.player.downCharge = 0;
   }
 
   function approach(value, target, amount) {
@@ -253,11 +271,12 @@
     state.lastScoreReason = null;
     state.rally = 0;
     state.spinNotice.timer = 0;
+    resetReleaseCharges();
   }
 
   function resetBall(direction = randSign()) {
     const angle = (Math.random() * 0.62 - 0.31);
-    const speed = 440;
+    const speed = BALL_BASE_SPEED;
     state.ball.x = FIELD_W / 2;
     state.ball.y = FIELD_H / 2;
     state.ball.speed = speed;
@@ -274,6 +293,7 @@
     state.opponent.y = FIELD_H / 2 - state.opponent.h / 2;
     state.player.vy = 0;
     state.opponent.vy = 0;
+    resetReleaseCharges();
     pointerY = null;
   }
 
@@ -308,6 +328,7 @@
     playPointSound(side);
 
     state.rally = 0;
+    resetReleaseCharges();
 
     if (checkWinner()) {
       return;
@@ -351,7 +372,7 @@
   function bounceFromPaddle(paddle, direction) {
     const ball = state.ball;
     const offset = clamp((ball.y - rectCenterY(paddle)) / (paddle.h / 2), -1, 1);
-    const speed = Math.min(ball.speed + 24, 760);
+    const speed = Math.min(ball.speed + RALLY_BALL_SPEED_GAIN, BALL_MAX_SPEED);
     const angle = offset * 0.88;
     const side = direction > 0 ? "player" : "opponent";
     const spinPower = clamp(paddle.vy / MAX_SPIN_PADDLE_SPEED, -1, 1);
@@ -380,6 +401,34 @@
     return approach(current, 0, brake * dt);
   }
 
+  function updateReleasePlayerVelocity(upPressed, downPressed, dt) {
+    const player = state.player;
+
+    if (upPressed) {
+      player.upCharge += RELEASE_CHARGE_ACCEL * dt;
+    } else {
+      player.upCharge = approach(player.upCharge, 0, RELEASE_CHARGE_DECAY * dt);
+    }
+
+    if (downPressed) {
+      player.downCharge += RELEASE_CHARGE_ACCEL * dt;
+    } else {
+      player.downCharge = approach(player.downCharge, 0, RELEASE_CHARGE_DECAY * dt);
+    }
+
+    if (upPressed || downPressed) {
+      const netVelocity = (downPressed ? player.downCharge : 0) - (upPressed ? player.upCharge : 0);
+      if (upPressed && downPressed) {
+        player.vy = approach(player.vy, netVelocity, RELEASE_NEUTRAL_BRAKE * dt);
+      } else {
+        player.vy = netVelocity;
+      }
+      return;
+    }
+
+    player.vy = approach(player.vy, 0, PLAYER_BRAKE * dt);
+  }
+
   function keepPaddleInBounds(paddle) {
     const nextY = clamp(paddle.y, 34, FIELD_H - paddle.h - 34);
     if (nextY !== paddle.y) {
@@ -392,24 +441,33 @@
   }
 
   function updatePlayer(dt) {
+    const upPressed = keys.has("ArrowUp") || keys.has("KeyW");
+    const downPressed = keys.has("ArrowDown") || keys.has("KeyS");
     let intent = 0;
-    if (keys.has("ArrowUp") || keys.has("KeyW")) intent -= 1;
-    if (keys.has("ArrowDown") || keys.has("KeyS")) intent += 1;
+    if (upPressed) intent -= 1;
+    if (downPressed) intent += 1;
 
     if (pointerY !== null) {
       const target = pointerY - state.player.h / 2;
       const delta = target - state.player.y;
       intent = Math.abs(delta) > 8 ? Math.sign(delta) : 0;
+      resetReleaseCharges();
     }
 
-    state.player.vy = updatePaddleVelocity(
-      state.player.vy,
-      intent,
-      PLAYER_ACCEL,
-      PLAYER_BRAKE,
-      PLAYER_MAX_SPEED,
-      dt
-    );
+    if (isReleaseMode() && pointerY === null) {
+      updateReleasePlayerVelocity(upPressed, downPressed, dt);
+    } else {
+      resetReleaseCharges();
+      state.player.vy = updatePaddleVelocity(
+        state.player.vy,
+        intent,
+        PLAYER_ACCEL,
+        PLAYER_BRAKE,
+        PLAYER_MAX_SPEED,
+        dt
+      );
+    }
+
     state.player.y += state.player.vy * dt;
 
     if (pointerY !== null) {
@@ -696,14 +754,20 @@
   }
 
   function drawHud() {
-    const x = FIELD_W / 2 - 85;
-    const y = FIELD_H - 82;
+    const releaseActive = isReleaseMode();
+    const w = releaseActive ? 290 : 170;
+    const h = releaseActive ? 68 : 46;
+    const x = FIELD_W / 2 - w / 2;
+    const y = FIELD_H - (releaseActive ? 104 : 82);
 
     ctx.save();
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = "rgba(31, 42, 51, 0.1)";
-    drawRoundedRect(x, y, 170, 46, 8);
+    ctx.fillStyle = "rgba(249, 252, 253, 0.88)";
+    drawRoundedRect(x, y, w, h, 8);
+    ctx.strokeStyle = "rgba(31, 42, 51, 0.14)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
 
     ctx.fillStyle = "#607580";
     ctx.font = "700 13px Inter, system-ui, sans-serif";
@@ -712,6 +776,18 @@
     ctx.fillStyle = "#1f2a33";
     ctx.font = "800 24px Inter, system-ui, sans-serif";
     ctx.fillText(String(currentPlayerSpeed()), x + 73, y + 18);
+
+    if (releaseActive) {
+      ctx.fillStyle = "#ef5c43";
+      ctx.font = "800 13px Inter, system-ui, sans-serif";
+      ctx.fillText("RELEASE", x + 168, y + 18);
+
+      ctx.fillStyle = "#607580";
+      ctx.font = "700 13px Inter, system-ui, sans-serif";
+      ctx.fillText(`UP ${Math.round(state.player.upCharge)}`, x + 16, y + 45);
+      ctx.fillText(`DOWN ${Math.round(state.player.downCharge)}`, x + 112, y + 45);
+    }
+
     ctx.restore();
   }
 
@@ -885,6 +961,8 @@
         height: state.player.h,
         velocityY: Math.round(state.player.vy),
         currentSpeed: currentPlayerSpeed(),
+        upCharge: Math.round(state.player.upCharge),
+        downCharge: Math.round(state.player.downCharge),
       },
       opponent: {
         x: Math.round(state.opponent.x),
@@ -900,12 +978,21 @@
         velocityX: Math.round(state.ball.vx),
         velocityY: Math.round(state.ball.vy),
         speed: Math.round(state.ball.speed),
+        baseSpeed: BALL_BASE_SPEED,
+        rallySpeedGain: RALLY_BALL_SPEED_GAIN,
+        maxSpeed: BALL_MAX_SPEED,
         spin: round2(state.ball.spin),
         curveStrength: round2(state.ball.curveStrength),
         arcDirection: state.ball.arcDirection,
         trailPoints: state.ball.trail.length,
       },
       rally: state.rally,
+      releaseMode: {
+        active: isReleaseMode(),
+        threshold: RELEASE_RALLY_THRESHOLD,
+        upCharge: Math.round(state.player.upCharge),
+        downCharge: Math.round(state.player.downCharge),
+      },
       lastPoint: state.lastPoint,
       lastPointAmount: round2(state.lastPointAmount),
       lastScoreReason: state.lastScoreReason,

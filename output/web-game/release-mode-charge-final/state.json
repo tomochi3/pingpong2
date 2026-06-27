@@ -1,0 +1,200 @@
+{
+  "reachedRelease": {
+    "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+    "version": "v1.3.3",
+    "mode": "playing",
+    "score": {
+      "player": 0,
+      "opponent": 0,
+      "playerDisplay": "0.00",
+      "opponentDisplay": "0.00",
+      "target": 7
+    },
+    "player": {
+      "x": 66,
+      "y": 302,
+      "width": 20,
+      "height": 116,
+      "velocityY": 0,
+      "currentSpeed": 0,
+      "upCharge": 0,
+      "downCharge": 0
+    },
+    "opponent": {
+      "x": 1194,
+      "y": 341,
+      "width": 20,
+      "height": 116,
+      "velocityY": -75
+    },
+    "ball": {
+      "x": 1163,
+      "y": 345,
+      "radius": 11,
+      "velocityX": -395,
+      "velocityY": -295,
+      "speed": 488,
+      "spin": -0.14,
+      "curveStrength": 0.11,
+      "arcDirection": -1,
+      "trailPoints": 4
+    },
+    "rally": 2,
+    "releaseMode": {
+      "active": true,
+      "threshold": 2,
+      "upCharge": 0,
+      "downCharge": 0
+    },
+    "lastPoint": null,
+    "lastPointAmount": 0,
+    "lastScoreReason": null,
+    "spinNotice": {
+      "active": false,
+      "side": null,
+      "amount": 0
+    },
+    "audio": {
+      "available": true,
+      "unlocked": true,
+      "eventCount": 2,
+      "lastCue": "paddle-hit",
+      "lastSpinAmount": 0,
+      "lastCueStrong": false,
+      "strongSpinThreshold": 0.8
+    },
+    "winner": null
+  },
+  "bothHeld": {
+    "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+    "version": "v1.3.3",
+    "mode": "playing",
+    "score": {
+      "player": 0,
+      "opponent": 0,
+      "playerDisplay": "0.00",
+      "opponentDisplay": "0.00",
+      "target": 7
+    },
+    "player": {
+      "x": 66,
+      "y": 302,
+      "width": 20,
+      "height": 116,
+      "velocityY": 0,
+      "currentSpeed": 0,
+      "upCharge": 1440,
+      "downCharge": 1440
+    },
+    "opponent": {
+      "x": 1194,
+      "y": 316,
+      "width": 20,
+      "height": 116,
+      "velocityY": 0
+    },
+    "ball": {
+      "x": 910,
+      "y": 142,
+      "radius": 11,
+      "velocityX": -395,
+      "velocityY": -323,
+      "speed": 488,
+      "spin": 0,
+      "curveStrength": 0,
+      "arcDirection": 0,
+      "trailPoints": 0
+    },
+    "rally": 2,
+    "releaseMode": {
+      "active": true,
+      "threshold": 2,
+      "upCharge": 1440,
+      "downCharge": 1440
+    },
+    "lastPoint": null,
+    "lastPointAmount": 0,
+    "lastScoreReason": null,
+    "spinNotice": {
+      "active": false,
+      "side": null,
+      "amount": 0
+    },
+    "audio": {
+      "available": true,
+      "unlocked": true,
+      "eventCount": 2,
+      "lastCue": "paddle-hit",
+      "lastSpinAmount": 0,
+      "lastCueStrong": false,
+      "strongSpinThreshold": 0.8
+    },
+    "winner": null
+  },
+  "releasedUp": {
+    "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+    "version": "v1.3.3",
+    "mode": "playing",
+    "score": {
+      "player": 0,
+      "opponent": 0,
+      "playerDisplay": "0.00",
+      "opponentDisplay": "0.00",
+      "target": 7
+    },
+    "player": {
+      "x": 66,
+      "y": 446,
+      "width": 20,
+      "height": 116,
+      "velocityY": 1660,
+      "currentSpeed": 1660,
+      "upCharge": 1275,
+      "downCharge": 1660
+    },
+    "opponent": {
+      "x": 1194,
+      "y": 316,
+      "width": 20,
+      "height": 116,
+      "velocityY": 0
+    },
+    "ball": {
+      "x": 874,
+      "y": 112,
+      "radius": 11,
+      "velocityX": -395,
+      "velocityY": -323,
+      "speed": 488,
+      "spin": 0,
+      "curveStrength": 0,
+      "arcDirection": 0,
+      "trailPoints": 0
+    },
+    "rally": 2,
+    "releaseMode": {
+      "active": true,
+      "threshold": 2,
+      "upCharge": 1275,
+      "downCharge": 1660
+    },
+    "lastPoint": null,
+    "lastPointAmount": 0,
+    "lastScoreReason": null,
+    "spinNotice": {
+      "active": false,
+      "side": null,
+      "amount": 0
+    },
+    "audio": {
+      "available": true,
+      "unlocked": true,
+      "eventCount": 2,
+      "lastCue": "paddle-hit",
+      "lastSpinAmount": 0,
+      "lastCueStrong": false,
+      "strongSpinThreshold": 0.8
+    },
+    "winner": null
+  }
+}
