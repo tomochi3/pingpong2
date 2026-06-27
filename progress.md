@@ -225,8 +225,84 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Holding Down on the right client charged the host-side right paddle (`opponent.downCharge:319`).
   - The right client received host ball snapshots and rendered the shared game state.
   - Static solo smoke test completed with no game console error artifacts and showed `version:"v1.6.0"`.
+- Added same-PC local two-player mode:
+  - Bumped the displayed game version to `v1.6.1`.
+  - Added `state.localTwoPlayer` and `playMode:"local-two-player"` export.
+  - Pressing `2` starts same-PC 2P; pressing `1` starts solo; `R` restarts the current local mode.
+  - In local 2P, left player uses `W/S/A`, while right player uses `ArrowUp/ArrowDown/ArrowLeft`.
+  - The right paddle now uses the same human timing rules locally as LAN right player: release-mode movement, smash charging, and timed hit window.
+  - Added `LOCAL 2P / 同じPCで対戦中` status text and updated menu/readme controls.
+- Verified with Playwright:
+  - `Digit2` started `playMode:"local-two-player"`.
+  - Holding `S` charged only the left paddle (`player.downCharge:980`) and did not charge the right paddle.
+  - Holding `ArrowDown` charged only the right paddle (`opponent.downCharge:980`) and did not charge the left paddle.
+  - Holding/releasing `ArrowLeft` charged and readied only the right paddle smash (`opponent.smashLastCharge:217`).
+  - Solo smoke test still completed with no game console error artifacts and showed `playMode:"solo"`.
+  - LAN multiplayer regression test still passed after updating the expected version to `v1.6.1`.
+- Fixed local/LAN multiplayer bugs found during review:
+  - Bumped the displayed game version to `v1.6.2`.
+  - Fixed the LAN WebSocket frame parser so split TCP packets are buffered until a complete WebSocket frame arrives instead of being dropped.
+  - Fixed Space restart after a local 2P gameover so it restarts in `playMode:"local-two-player"` instead of silently switching back to solo.
+  - Split the local 2P HUD into separate `1P` and `2P` panels so both paddle speeds, release charges, and smash readiness are visible.
+  - Fixed first-time tutorial bubble placement/source logic so right-player actions use the right paddle and left/right inputs no longer combine into a false simultaneous-charge tutorial.
+  - Fixed `render_game_to_text().player.currentSpeed` to report the exported player paddle speed directly.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Raw TCP WebSocket fragment test delivered a split client input frame to the host only after the second fragment arrived.
+  - LAN multiplayer regression passed with the right client controlling the host-side right paddle.
+  - Local 2P regression passed for separate left/right movement, right smash readiness, and Space restart preserving local 2P.
+  - Solo smoke test completed with no game console error artifacts and showed `version:"v1.6.2"`.
+  - Visual checks confirmed the two-panel local 2P HUD and right-side tutorial bubble placement.
+- Changed charge-shot collision rules:
+  - Bumped the displayed game version to `v1.6.3`.
+  - Paddle/ball collision now only passes through while that paddle is actively charging a smash.
+  - When the paddle is not charging, it always returns the ball; releasing the charge still applies the stored smash bonus if the ball hits during the ready window.
+  - Replaced the current-position-only paddle collision check with a swept front-edge check using the ball's previous position, reducing high-speed tunneling when the paddle is not charging.
+  - Updated the first-time smash tutorial and `readme.md` wording to explain that only active charging lets the ball pass through.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` passed.
+  - Deterministic no-charge scenario returned the ball with `rally:1`, `goals.total:0`, and `ball.velocityX:545`.
+  - Deterministic active-charge scenario let the ball pass through and produced an opponent goal.
+  - Deterministic released-smash scenario returned the ball with speed bonus (`lastSmashCharge:444`, `lastSmashSpeedBonus:400`, `ball.velocityX:945`).
+  - Standard web-game smoke test completed with no game console error artifacts and showed `version:"v1.6.3"`.
+  - Visual checks confirmed normal return, charge pass-through, and released smash return screenshots.
+- Fixed drag acceleration carrying into smash curves:
+  - Bumped the displayed game version to `v1.6.4`.
+  - Added `smashReleaseSpinVelocity` to each paddle so the vertical speed built by drag/keyboard movement is captured at the moment the smash charge is released.
+  - `spinVelocityForPaddle` now uses the strongest of current paddle velocity, held release velocity, and the captured smash-release velocity while the shot is ready.
+  - Added `ball.lastSpinVelocity` to `render_game_to_text` so tests can confirm which vertical speed produced the spin/curve on the last hit.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Deterministic flat drag-smash returned the ball with `spin:0`, `curveStrength:0`, and `lastSpinVelocity:0`.
+  - Deterministic down-drag smash built vertical acceleration (`downCharge:360`, `velocityY:360`) and returned the ball with `lastSpinVelocity:360`, `spin:0.33`, `curveStrength:0.5`, and spin score `+0.64`.
+  - Standard web-game smoke test completed with no game console error artifacts and showed `version:"v1.6.4"`.
+  - Visual checks confirmed the down-drag smash shows a spin award and the updated version text.
+- Added selectable easy mode:
+  - Bumped the displayed game version to `v1.7.0`.
+  - Added `E` as an easy-mode toggle and showed `E: 簡単モード ON/OFF` on the menu overlay.
+  - Easy mode aligns the player's paddle center to the ball's y-position while preserving release charge, smash charge, and vertical acceleration buildup.
+  - Easy mode guarantees the player's paddle returns the ball; if the player is actively charging when the ball arrives, the held charge is converted into a smash return automatically.
+  - Added easy-mode status to the lower-left network/mode label and exported `easyMode` state via `render_game_to_text`.
+  - Updated `readme.md` with the easy-mode controls and behavior.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Deterministic easy-mode held-charge scenario kept paddle/ball y-alignment at `0` delta, returned the ball while charge was still held, and applied the held charge (`lastSmashCharge:504`, `lastSmashSpeedBonus:454`).
+  - The same easy-mode scenario preserved vertical acceleration into spin/curve (`lastSpinVelocity:2862`, `spin:3.26`, `curveStrength:7.69`, spin score `+5.09`).
+  - Normal-mode charge collision regression still passed: no-charge returns, active charge passes through, released smash returns.
+  - Standard web-game smoke test completed with no game console error artifacts and showed `version:"v1.7.0"`.
+  - Visual checks confirmed the easy-mode return, strong curve trail, lower-left `簡単ON` status, and updated version text.
+- Made easy mode the default:
+  - Bumped the displayed game version to `v1.7.1`.
+  - Changed the initial `easyMode` state to `true`, so new page loads start with easy mode ON.
+  - Kept `E` as the ON/OFF toggle and updated the menu/readme wording to show that easy mode starts ON by default.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Menu state starts with `easyMode.active:true` and `version:"v1.7.1"`.
+  - Pressing `E` toggles easy mode OFF, and pressing `E` again toggles it back ON.
+  - Starting play after the default ON state keeps easy mode active and aligns the paddle center with the ball y-position.
+  - Visual check confirmed the menu shows `E: 簡単モード ON（初期ON）` without layout issues.
 
 ## TODO
 
 - No known functional TODOs.
-- Suggested future polish: add sound effects, difficulty selection, or a two-player local mode.
+- Suggested future polish: add a relay/NAT traversal option for easier different-Wi-Fi online play.

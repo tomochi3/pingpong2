@@ -2,8 +2,8 @@
   "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
   "version": "v1.6.2",
   "mode": "playing",
-  "playMode": "lan",
-  "localTwoPlayer": false,
+  "playMode": "local-two-player",
+  "localTwoPlayer": true,
   "score": {
     "player": 0,
     "opponent": 0,
@@ -19,7 +19,7 @@
   },
   "player": {
     "x": 66,
-    "y": 302,
+    "y": 570,
     "width": 20,
     "height": 116,
     "velocityY": 0,
@@ -36,27 +36,27 @@
   },
   "opponent": {
     "x": 1194,
-    "y": 325,
+    "y": 502,
     "width": 20,
     "height": 116,
-    "velocityY": 320,
-    "currentSpeed": 320,
+    "velocityY": 960,
+    "currentSpeed": 960,
     "upCharge": 0,
-    "downCharge": 320,
+    "downCharge": 960,
     "smashCharge": 0,
     "smashReady": false,
     "smashReadyTimer": 0,
     "smashLastCharge": 0,
     "smashLastSpeedBonus": 0,
     "releaseShakePower": 0,
-    "releaseHeldVelocity": 320
+    "releaseHeldVelocity": 960
   },
   "ball": {
-    "x": 717,
-    "y": 371,
+    "x": 244,
+    "y": 438,
     "radius": 11,
-    "velocityX": 436,
-    "velocityY": 60,
+    "velocityX": -432,
+    "velocityY": 85,
     "speed": 440,
     "currentSpeed": 440,
     "baseSpeed": 440,
@@ -115,31 +115,22 @@
     "smashDeadzone": 42
   },
   "network": {
-    "connected": true,
-    "side": "left",
-    "host": true,
-    "playerCount": 2,
-    "clients": [
-      {
-        "id": 1,
-        "side": "left",
-        "host": true
-      },
-      {
-        "id": 2,
-        "side": "right",
-        "host": false
-      }
-    ],
-    "urls": [
-      "http://10.31.200.70:5174/"
-    ],
-    "lastError": null
+    "connected": false,
+    "side": "solo",
+    "host": false,
+    "playerCount": 0,
+    "clients": [],
+    "urls": [],
+    "lastError": "LAN server unavailable"
   },
   "tutorial": {
-    "active": false,
-    "activeIds": [],
-    "seenIds": []
+    "active": true,
+    "activeIds": [
+      "move"
+    ],
+    "seenIds": [
+      "move"
+    ]
   },
   "lastPoint": null,
   "lastPointAmount": 0,

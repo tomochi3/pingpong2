@@ -1,7 +1,9 @@
 {
   "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
-  "version": "v1.6.0",
+  "version": "v1.6.2",
   "mode": "playing",
+  "playMode": "lan",
+  "localTwoPlayer": false,
   "score": {
     "player": 0,
     "opponent": 0,
@@ -21,7 +23,7 @@
     "width": 20,
     "height": 116,
     "velocityY": 0,
-    "currentSpeed": 280,
+    "currentSpeed": 0,
     "upCharge": 0,
     "downCharge": 0,
     "smashCharge": 0,
@@ -50,11 +52,11 @@
     "releaseHeldVelocity": 280
   },
   "ball": {
-    "x": 705,
-    "y": 350,
+    "x": 709,
+    "y": 370,
     "radius": 11,
-    "velocityX": 434,
-    "velocityY": -70,
+    "velocityX": 436,
+    "velocityY": 60,
     "speed": 440,
     "currentSpeed": 440,
     "baseSpeed": 440,
@@ -130,7 +132,7 @@
       }
     ],
     "urls": [
-      "http://10.66.181.79:5174/"
+      "http://10.31.200.70:5174/"
     ],
     "lastError": null
   },

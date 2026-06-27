@@ -4,7 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.6.0";
+  const GAME_VERSION = "v1.7.1";
   const GOALS_TO_END = 5;
   const TUTORIAL_DURATION = 4.2;
   const PLAYER_MAX_SPEED = 900;
@@ -81,6 +81,8 @@
     lastPointAmount: 0,
     lastScoreReason: null,
     winner: null,
+    localTwoPlayer: false,
+    easyMode: true,
     rally: 0,
     goals: {
       player: 0,
@@ -119,6 +121,7 @@
       smashReadyTimer: 0,
       smashLastCharge: 0,
       smashLastSpeedBonus: 0,
+      smashReleaseSpinVelocity: 0,
       smashPressedLastFrame: false,
       releaseShakePhase: 0,
       releaseShakePower: 0,
@@ -137,6 +140,7 @@
       smashReadyTimer: 0,
       smashLastCharge: 0,
       smashLastSpeedBonus: 0,
+      smashReleaseSpinVelocity: 0,
       smashPressedLastFrame: false,
       releaseShakePhase: 0,
       releaseShakePower: 0,
@@ -156,6 +160,7 @@
       lastCenterHitSpeedBonus: 0,
       lastSmashCharge: 0,
       lastSmashSpeedBonus: 0,
+      lastSpinVelocity: 0,
       playerSmashSpeedBonus: 0,
       opponentSmashSpeedBonus: 0,
       lastGoalProtectedSpeed: 0,
@@ -200,8 +205,16 @@
     return isNetworkGame() && network.host;
   }
 
+  function isLocalTwoPlayer() {
+    return state.localTwoPlayer && !isNetworkGame();
+  }
+
+  function isEasyModePaddle(paddle) {
+    return state.easyMode && paddle === state.player;
+  }
+
   function hasHumanRightPlayer() {
-    return isNetworkHost() && network.clients.some((client) => client.side === "right");
+    return isLocalTwoPlayer() || (isNetworkHost() && network.clients.some((client) => client.side === "right"));
   }
 
   function sideToPaddle(side) {
@@ -214,6 +227,19 @@
 
   function localPaddle() {
     return network.side === "right" ? state.opponent : state.player;
+  }
+
+  function localInputSide() {
+    return network.side === "right" ? "right" : "left";
+  }
+
+  function sideForKey(code) {
+    if (isLocalTwoPlayer()) {
+      if (code === "ArrowUp" || code === "ArrowDown" || code === "ArrowLeft") return "right";
+      if (code === "KeyW" || code === "KeyS" || code === "KeyA") return "left";
+    }
+
+    return localInputSide();
   }
 
   function isMoveKey(code) {
@@ -265,7 +291,23 @@
     return keys.has("ArrowLeft") || keys.has("KeyA") || dragInput().smash;
   }
 
-  function localControlInput() {
+  function keyboardInputForSide(side) {
+    if (side === "right") {
+      return {
+        up: keys.has("ArrowUp"),
+        down: keys.has("ArrowDown"),
+        smash: keys.has("ArrowLeft"),
+      };
+    }
+
+    return {
+      up: keys.has("KeyW"),
+      down: keys.has("KeyS"),
+      smash: keys.has("KeyA"),
+    };
+  }
+
+  function soloControlInput() {
     return {
       up: isUpPressed(),
       down: isDownPressed(),
@@ -273,13 +315,33 @@
     };
   }
 
+  function localControlInput(side = "left") {
+    if (isLocalTwoPlayer()) {
+      const keyboard = keyboardInputForSide(side);
+      if (side !== "left") return keyboard;
+
+      const drag = dragInput();
+      return {
+        up: keyboard.up || drag.up,
+        down: keyboard.down || drag.down,
+        smash: keyboard.smash || drag.smash,
+      };
+    }
+
+    return soloControlInput();
+  }
+
   function inputForSide(side) {
+    if (isLocalTwoPlayer()) {
+      return localControlInput(side);
+    }
+
     if (!isNetworkGame()) {
-      return side === "left" ? localControlInput() : { up: false, down: false, smash: false };
+      return side === "left" ? localControlInput("left") : { up: false, down: false, smash: false };
     }
 
     if (network.side === side) {
-      return localControlInput();
+      return localControlInput(side);
     }
 
     return network.remoteInputs[side] || { up: false, down: false, smash: false };
@@ -328,6 +390,7 @@
     paddle.smashReadyTimer = 0;
     paddle.smashLastCharge = 0;
     paddle.smashLastSpeedBonus = 0;
+    paddle.smashReleaseSpinVelocity = 0;
     paddle.smashPressedLastFrame = false;
   }
 
@@ -522,6 +585,7 @@
     state.ball.lastCenterHitSpeedBonus = 0;
     state.ball.lastSmashCharge = 0;
     state.ball.lastSmashSpeedBonus = 0;
+    state.ball.lastSpinVelocity = 0;
     state.ball.playerSmashSpeedBonus = 0;
     state.ball.opponentSmashSpeedBonus = 0;
     state.ball.trail = [];
@@ -537,11 +601,23 @@
     resetDragControl();
   }
 
-  function startGame() {
+  function startGame(options = {}) {
+    state.localTwoPlayer = Boolean(options.localTwoPlayer);
+    if (Object.prototype.hasOwnProperty.call(options, "easyMode")) {
+      state.easyMode = Boolean(options.easyMode);
+    }
     resetScores();
     resetPaddles();
     resetBall(randSign());
     state.mode = "playing";
+  }
+
+  function startLocalTwoPlayerGame() {
+    resumeAudio();
+    if (isNetworkGame() && !network.host) {
+      return;
+    }
+    startGame({ localTwoPlayer: true });
   }
 
   function addScore(side, amount) {
@@ -555,6 +631,7 @@
     if (state.mode !== "playing" && state.mode !== "point") return;
 
     paddle.smashLastCharge = paddle.smashCharge;
+    paddle.smashReleaseSpinVelocity = spinVelocityForPaddle(paddle);
     paddle.smashCharge = 0;
     paddle.smashLastSpeedBonus = 0;
     paddle.smashReadyTimer = paddle.smashLastCharge >= SMASH_MIN_CHARGE ? SMASH_RELEASE_WINDOW : 0;
@@ -639,19 +716,43 @@
     return rect.y + rect.h / 2;
   }
 
-  function ballHitsPaddle(paddle) {
+  function paddleCollision(paddle, previousX, previousY) {
     const ball = state.ball;
-    return (
+    const overlapping = (
       ball.x + ball.r >= paddle.x &&
       ball.x - ball.r <= paddle.x + paddle.w &&
       ball.y + ball.r >= paddle.y &&
       ball.y - ball.r <= paddle.y + paddle.h
     );
+    if (overlapping) {
+      return { hit: true, y: ball.y };
+    }
+
+    if (previousX === ball.x) {
+      return { hit: false, y: ball.y };
+    }
+
+    const frontX = paddle === state.player ? paddle.x + paddle.w + ball.r : paddle.x - ball.r;
+    const crossedFront = paddle === state.player
+      ? previousX >= frontX && ball.x <= frontX
+      : previousX <= frontX && ball.x >= frontX;
+    if (!crossedFront) {
+      return { hit: false, y: ball.y };
+    }
+
+    const t = clamp((frontX - previousX) / (ball.x - previousX), 0, 1);
+    const contactY = previousY + (ball.y - previousY) * t;
+    const hitY = contactY + ball.r >= paddle.y && contactY - ball.r <= paddle.y + paddle.h;
+    return { hit: hitY, y: contactY };
   }
 
   function spinVelocityForPaddle(paddle) {
     const heldVelocity = paddle.releaseHeldVelocity || 0;
-    return Math.abs(heldVelocity) > Math.abs(paddle.vy) ? heldVelocity : paddle.vy;
+    const releaseSpinVelocity = paddle.smashReadyTimer > 0 ? paddle.smashReleaseSpinVelocity || 0 : 0;
+    const strongestStoredVelocity = Math.abs(releaseSpinVelocity) > Math.abs(heldVelocity)
+      ? releaseSpinVelocity
+      : heldVelocity;
+    return Math.abs(strongestStoredVelocity) > Math.abs(paddle.vy) ? strongestStoredVelocity : paddle.vy;
   }
 
   function spinCurveStrength(spinAmount, offset) {
@@ -675,6 +776,7 @@
     if (input.smash) {
       paddle.smashCharge += SMASH_CHARGE_ACCEL * dt;
       paddle.smashReadyTimer = 0;
+      paddle.smashReleaseSpinVelocity = 0;
       paddle.smashPressedLastFrame = true;
       return;
     }
@@ -686,6 +788,9 @@
 
     if (paddle.smashReadyTimer > 0) {
       paddle.smashReadyTimer = Math.max(0, paddle.smashReadyTimer - dt);
+      if (paddle.smashReadyTimer <= 0) {
+        paddle.smashReleaseSpinVelocity = 0;
+      }
     }
   }
 
@@ -697,7 +802,12 @@
   }
 
   function paddleCanHitBall(paddle) {
-    return paddle.smashReadyTimer > 0;
+    return isEasyModePaddle(paddle) || paddle.smashCharge <= 0;
+  }
+
+  function prepareEasyPaddleHit(paddle) {
+    if (!isEasyModePaddle(paddle) || paddle.smashCharge <= 0) return;
+    armSmashReleaseForPaddle(paddle);
   }
 
   function bounceFromPaddle(paddle, direction) {
@@ -729,6 +839,7 @@
     ball.lastCenterHitSpeedBonus = centerSpeedBonus;
     ball.lastSmashCharge = smashCharge;
     ball.lastSmashSpeedBonus = appliedSmashSpeedBonus;
+    ball.lastSpinVelocity = spinVelocity;
     if (paddle === state.player) {
       ball.playerSmashSpeedBonus += appliedSmashSpeedBonus;
     } else if (paddle === state.opponent) {
@@ -737,6 +848,7 @@
     ball.trail = [{ x: ball.x, y: ball.y, strength: ball.curveStrength }];
     ball.x = direction > 0 ? paddle.x + paddle.w + ball.r : paddle.x - ball.r;
     paddle.smashReadyTimer = 0;
+    paddle.smashReleaseSpinVelocity = 0;
     paddle.smashLastSpeedBonus = appliedSmashSpeedBonus;
     state.rally += 1;
 
@@ -814,6 +926,11 @@
     }
   }
 
+  function syncEasyPaddleToBall(paddle) {
+    if (!isEasyModePaddle(paddle) || (state.mode !== "playing" && state.mode !== "point")) return;
+    paddle.y = state.ball.y - paddle.h / 2;
+  }
+
   function updateHumanPaddle(paddle, input, dt) {
     let intent = 0;
     if (input.up) intent -= 1;
@@ -851,6 +968,7 @@
     }
 
     keepPaddleInBounds(paddle);
+    syncEasyPaddleToBall(paddle);
   }
 
   function updatePlayer(dt) {
@@ -884,6 +1002,8 @@
     const ball = state.ball;
     const arc = ball.arcDirection * ball.curveStrength * SPIN_ARC_ACCEL;
     const verticalLimit = ballVerticalLimit();
+    const previousX = ball.x;
+    const previousY = ball.y;
 
     ball.vy = clamp(ball.vy + arc * dt, -verticalLimit, verticalLimit);
     ball.x += ball.vx * dt;
@@ -917,15 +1037,22 @@
       ball.curveStrength *= 0.82;
     }
 
-    if (ball.vx < 0 && ballHitsPaddle(state.player)) {
+    syncEasyPaddleToBall(state.player);
+
+    const playerCollision = ball.vx < 0 ? paddleCollision(state.player, previousX, previousY) : { hit: false };
+    if (playerCollision.hit) {
       if (paddleCanHitBall(state.player)) {
+        ball.y = playerCollision.y;
+        prepareEasyPaddleHit(state.player);
         bounceFromPaddle(state.player, 1);
       }
       if (state.mode === "gameover") return;
     }
 
-    if (ball.vx > 0 && ballHitsPaddle(state.opponent)) {
+    const opponentCollision = ball.vx > 0 ? paddleCollision(state.opponent, previousX, previousY) : { hit: false };
+    if (opponentCollision.hit) {
       if (!hasHumanRightPlayer() || paddleCanHitBall(state.opponent)) {
+        ball.y = opponentCollision.y;
         bounceFromPaddle(state.opponent, -1);
       }
       if (state.mode === "gameover") return;
@@ -1220,11 +1347,15 @@
     ctx.font = "500 27px Inter, system-ui, sans-serif";
     ctx.fillText(subtitle, FIELD_W / 2, 323);
 
-    drawButtonHint(actionText, FIELD_W / 2, 405, 310);
+    drawButtonHint(actionText, FIELD_W / 2, 405, 390);
 
     ctx.fillStyle = "#607580";
-    ctx.font = "500 20px Inter, system-ui, sans-serif";
-    ctx.fillText("W/S・↑/↓ / 上下ドラッグで移動  ←/A / 左ドラッグで溜め、離して打つ", FIELD_W / 2, 478);
+    ctx.font = "500 19px Inter, system-ui, sans-serif";
+    ctx.fillText("1P: W/S/A・ドラッグ  2P: ↑/↓/←  P/Enterで一時停止", FIELD_W / 2, 478);
+    ctx.fillText("Space/クリックで1人プレイ  2キーで同じPCの2人対戦", FIELD_W / 2, 510);
+    ctx.fillStyle = state.easyMode ? "#1c84b4" : "#607580";
+    ctx.font = "800 18px Inter, system-ui, sans-serif";
+    ctx.fillText(`E: 簡単モード ${state.easyMode ? "ON" : "OFF"}（初期ON）`, FIELD_W / 2, 542);
   }
 
   function drawPointNotice() {
@@ -1284,14 +1415,7 @@
     ctx.restore();
   }
 
-  function drawHud() {
-    const releaseActive = isReleaseMode();
-    const paddle = localPaddle();
-    const w = releaseActive ? 390 : 300;
-    const h = releaseActive ? 92 : 46;
-    const x = FIELD_W / 2 - w / 2;
-    const y = FIELD_H - (releaseActive ? 128 : 82);
-
+  function drawHudPanel(paddle, x, y, w, h, label, accent = "#ef5c43", showBall = true) {
     ctx.save();
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
@@ -1303,24 +1427,26 @@
 
     ctx.fillStyle = "#607580";
     ctx.font = "700 13px Inter, system-ui, sans-serif";
-    ctx.fillText("PADDLE", x + 16, y + 18);
+    ctx.fillText(label, x + 16, y + 18);
 
     ctx.fillStyle = "#1f2a33";
     ctx.font = "800 24px Inter, system-ui, sans-serif";
-    ctx.fillText(String(currentPlayerSpeed()), x + 82, y + 18);
+    ctx.fillText(String(Math.round(Math.abs(paddle.vy))), x + 82, y + 18);
 
-    ctx.fillStyle = "#607580";
-    ctx.font = "700 13px Inter, system-ui, sans-serif";
-    ctx.fillText("BALL", x + 150, y + 18);
+    if (showBall) {
+      ctx.fillStyle = "#607580";
+      ctx.font = "700 13px Inter, system-ui, sans-serif";
+      ctx.fillText("BALL", x + 150, y + 18);
 
-    ctx.fillStyle = "#1f2a33";
-    ctx.font = "800 24px Inter, system-ui, sans-serif";
-    ctx.fillText(String(currentBallSpeed()), x + 196, y + 18);
+      ctx.fillStyle = "#1f2a33";
+      ctx.font = "800 24px Inter, system-ui, sans-serif";
+      ctx.fillText(String(currentBallSpeed()), x + 196, y + 18);
+    }
 
-    if (releaseActive) {
-      ctx.fillStyle = "#ef5c43";
+    if (isReleaseMode()) {
+      ctx.fillStyle = accent;
       ctx.font = "800 13px Inter, system-ui, sans-serif";
-      ctx.fillText("RELEASE", x + 286, y + 18);
+      ctx.fillText("RELEASE", x + w - 104, y + 18);
 
       ctx.fillStyle = "#607580";
       ctx.font = "700 13px Inter, system-ui, sans-serif";
@@ -1330,7 +1456,7 @@
       const shotValue = paddle.smashCharge > 0
         ? Math.round(paddle.smashCharge)
         : Math.round(paddle.smashLastCharge);
-      ctx.fillStyle = paddle.smashReadyTimer > 0 ? "#ef5c43" : "#607580";
+      ctx.fillStyle = paddle.smashReadyTimer > 0 ? accent : "#607580";
       ctx.font = "800 13px Inter, system-ui, sans-serif";
       ctx.fillText(paddle.smashReadyTimer > 0 ? "SHOT READY" : "SHOT", x + 16, y + 72);
       ctx.fillStyle = "#1f2a33";
@@ -1339,6 +1465,25 @@
     }
 
     ctx.restore();
+  }
+
+  function drawHud() {
+    const releaseActive = isReleaseMode();
+    const w = releaseActive ? 390 : 300;
+    const h = releaseActive ? 92 : 46;
+    const y = FIELD_H - (releaseActive ? 128 : 82);
+
+    if (isLocalTwoPlayer()) {
+      const panelW = 360;
+      const gap = 22;
+      const leftX = FIELD_W / 2 - panelW - gap / 2;
+      const rightX = FIELD_W / 2 + gap / 2;
+      drawHudPanel(state.player, leftX, y, panelW, h, "1P", "#1c84b4", false);
+      drawHudPanel(state.opponent, rightX, y, panelW, h, "2P", "#ef5c43", true);
+      return;
+    }
+
+    drawHudPanel(localPaddle(), FIELD_W / 2 - w / 2, y, w, h, "PADDLE", "#ef5c43", true);
   }
 
   function drawVersion() {
@@ -1353,12 +1498,17 @@
 
   function drawNetworkStatus() {
     let label = "SOLO / LANサーバーなし";
-    if (isNetworkGame()) {
+    if (isLocalTwoPlayer()) {
+      label = "LOCAL 2P / 同じPCで対戦中";
+    } else if (isNetworkGame()) {
       const sideLabel = network.side === "right" ? "RIGHT" : network.side === "left" ? "LEFT" : "WATCH";
       const peerLabel = network.playerCount >= 2 ? "対戦中" : "相手待ち";
       label = `LAN ${sideLabel} / ${peerLabel}`;
     } else if (network.lastError) {
       label = "SOLO / LAN未接続";
+    }
+    if (state.easyMode) {
+      label += " / 簡単ON";
     }
 
     ctx.save();
@@ -1385,7 +1535,7 @@
     drawHud();
 
     if (state.mode === "menu") {
-      drawOverlay("PING PONG", "5ゴールで終了。最初から解放モードで勝負します。", "クリック / ドラッグ / Spaceで開始");
+      drawOverlay("PING PONG", "5ゴールで終了。最初から解放モードで勝負します。", "Space: 1P / 2: 2P");
     } else if (state.mode === "paused") {
       drawOverlay("PAUSE", "ラリーはここで止まっています。", "P / Enter / Spaceで再開");
     } else if (state.mode === "gameover") {
@@ -1422,8 +1572,8 @@
     };
   }
 
-  function showMoveTutorial() {
-    const paddle = localPaddle();
+  function showMoveTutorial(side = localInputSide()) {
+    const paddle = sideToPaddle(side);
     showTutorial(
       "move",
       ["長押し/上下ドラッグで加速"],
@@ -1433,30 +1583,31 @@
     );
   }
 
-  function showSmashTutorial() {
-    const paddle = localPaddle();
+  function showSmashTutorial(side = localInputSide()) {
+    const paddle = sideToPaddle(side);
     showTutorial(
       "smash",
-      ["←/A/左ドラッグで溜め", "離して打つ"],
+      ["溜め中だけ球を通す", "離すと強打"],
       paddle === state.opponent ? paddle.x - 52 : paddle.x + paddle.w + 52,
       paddle.y + paddle.h / 2 + 52,
       paddle === state.opponent ? "right" : "left"
     );
   }
 
-  function showChargeTutorialIfNeeded() {
+  function showChargeTutorialIfNeeded(side = localInputSide()) {
     if (!isReleaseMode()) return;
 
-    const hasUp = isUpPressed();
-    const hasDown = isDownPressed();
-    if (!hasUp || !hasDown) return;
+    const input = inputForSide(side);
+    if (!input.up || !input.down) return;
+
+    const paddle = sideToPaddle(side);
 
     showTutorial(
       "charge",
       ["上下同時で速度溜め", "片方を離すと反対へ発射"],
-      localPaddle() === state.opponent ? localPaddle().x - 42 : localPaddle().x + localPaddle().w + 42,
-      localPaddle().y + localPaddle().h / 2,
-      localPaddle() === state.opponent ? "right" : "left"
+      paddle === state.opponent ? paddle.x - 42 : paddle.x + paddle.w + 42,
+      paddle.y + paddle.h / 2,
+      paddle === state.opponent ? "right" : "left"
     );
   }
 
@@ -1479,6 +1630,7 @@
 
     const wasSmashPressed = isSmashPressed();
     const previousMoveIntent = dragControl.moveIntent;
+    const side = localInputSide();
     const point = canvasPoint(event);
     pointerY = point.y;
     dragControl.x = point.x;
@@ -1488,11 +1640,11 @@
     dragControl.moveIntent = drag.moveIntent;
 
     if (drag.moveIntent !== 0 && previousMoveIntent === 0 && (state.mode === "playing" || state.mode === "point")) {
-      showMoveTutorial();
+      showMoveTutorial(side);
     }
-    showChargeTutorialIfNeeded();
+    showChargeTutorialIfNeeded(side);
     if (!wasSmashPressed && isSmashPressed()) {
-      showSmashTutorial();
+      showSmashTutorial(side);
     }
     if (wasSmashPressed && !isSmashPressed()) {
       armSmashRelease();
@@ -1531,8 +1683,10 @@
       return;
     }
 
-    if (state.mode === "menu" || state.mode === "gameover") {
-      startGame();
+    if (state.mode === "menu") {
+      startGame({ localTwoPlayer: false });
+    } else if (state.mode === "gameover") {
+      startGame({ localTwoPlayer: isLocalTwoPlayer() });
     } else if (state.mode === "paused") {
       state.mode = "playing";
       lastTime = performance.now();
@@ -1564,7 +1718,7 @@
     const now = performance.now();
     if (now - network.lastInputAt < 30) return;
     network.lastInputAt = now;
-    sendNetworkMessage({ type: "input", input: localControlInput() });
+    sendNetworkMessage({ type: "input", input: localControlInput(network.side) });
   }
 
   function copyPaddle(paddle) {
@@ -1581,6 +1735,7 @@
       smashReadyTimer: paddle.smashReadyTimer,
       smashLastCharge: paddle.smashLastCharge,
       smashLastSpeedBonus: paddle.smashLastSpeedBonus,
+      smashReleaseSpinVelocity: paddle.smashReleaseSpinVelocity,
       smashPressedLastFrame: paddle.smashPressedLastFrame,
       releaseShakePhase: paddle.releaseShakePhase,
       releaseShakePower: paddle.releaseShakePower,
@@ -1600,6 +1755,7 @@
       lastPointAmount: state.lastPointAmount,
       lastScoreReason: state.lastScoreReason,
       winner: state.winner,
+      easyMode: state.easyMode,
       rally: state.rally,
       goals: { ...state.goals },
       player: copyPaddle(state.player),
@@ -1619,6 +1775,7 @@
     state.lastPointAmount = snapshot.lastPointAmount;
     state.lastScoreReason = snapshot.lastScoreReason;
     state.winner = snapshot.winner;
+    state.easyMode = Boolean(snapshot.easyMode);
     state.rally = snapshot.rally;
     state.goals = { ...snapshot.goals };
     applyPaddleSnapshot(state.player, snapshot.player);
@@ -1764,25 +1921,49 @@
       togglePause();
     } else if (event.code === "KeyR") {
       resumeAudio();
-      startGame();
+      startGame({ localTwoPlayer: isLocalTwoPlayer() });
+    } else if (event.code === "KeyE") {
+      event.preventDefault();
+      state.easyMode = !state.easyMode;
+    } else if (event.code === "Digit2") {
+      event.preventDefault();
+      startLocalTwoPlayerGame();
+    } else if (event.code === "Digit1") {
+      event.preventDefault();
+      startGame({ localTwoPlayer: false });
     } else if (event.code === "KeyF") {
       toggleFullscreen();
     }
 
     if (!wasPressed && isMoveKey(event.code) && (state.mode === "playing" || state.mode === "point")) {
-      showMoveTutorial();
-      showChargeTutorialIfNeeded();
+      const side = sideForKey(event.code);
+      showMoveTutorial(side);
+      showChargeTutorialIfNeeded(side);
     }
 
     if (!wasPressed && isSmashKey(event.code) && (state.mode === "playing" || state.mode === "point")) {
-      showSmashTutorial();
+      showSmashTutorial(sideForKey(event.code));
     }
   });
 
   window.addEventListener("keyup", (event) => {
+    const wasLeftSmashPressed = inputForSide("left").smash;
+    const wasRightSmashPressed = inputForSide("right").smash;
     const wasSmashPressed = isSmashPressed();
     keys.delete(event.code);
+    const stillLeftSmashPressed = inputForSide("left").smash;
+    const stillRightSmashPressed = inputForSide("right").smash;
     const stillSmashPressed = isSmashPressed();
+
+    if (isLocalTwoPlayer() && isSmashKey(event.code) && (state.mode === "playing" || state.mode === "point")) {
+      if (wasLeftSmashPressed && !stillLeftSmashPressed) {
+        armSmashReleaseForPaddle(state.player);
+      }
+      if (wasRightSmashPressed && !stillRightSmashPressed) {
+        armSmashReleaseForPaddle(state.opponent);
+      }
+      return;
+    }
 
     if (
       isSmashKey(event.code) &&
@@ -1817,6 +1998,15 @@
       coordinateSystem: "origin top-left, x right, y down, logical canvas 1280x720",
       version: GAME_VERSION,
       mode: state.mode,
+      playMode: isLocalTwoPlayer() ? "local-two-player" : isNetworkGame() ? "lan" : "solo",
+      localTwoPlayer: state.localTwoPlayer,
+      easyMode: {
+        active: state.easyMode,
+        assistedSide: state.easyMode ? "left" : null,
+        playerAlignedToBall: state.easyMode
+          ? Math.round(rectCenterY(state.player)) === Math.round(state.ball.y)
+          : false,
+      },
       score: {
         player: round2(state.player.score),
         opponent: round2(state.opponent.score),
@@ -1836,7 +2026,7 @@
         width: state.player.w,
         height: state.player.h,
         velocityY: Math.round(state.player.vy),
-        currentSpeed: currentPlayerSpeed(),
+        currentSpeed: Math.round(Math.abs(state.player.vy)),
         upCharge: Math.round(state.player.upCharge),
         downCharge: Math.round(state.player.downCharge),
         smashCharge: Math.round(state.player.smashCharge),
@@ -1844,6 +2034,7 @@
         smashReadyTimer: round2(state.player.smashReadyTimer),
         smashLastCharge: Math.round(state.player.smashLastCharge),
         smashLastSpeedBonus: Math.round(state.player.smashLastSpeedBonus),
+        smashReleaseSpinVelocity: Math.round(state.player.smashReleaseSpinVelocity),
         releaseShakePower: Math.round(state.player.releaseShakePower),
         releaseHeldVelocity: Math.round(state.player.releaseHeldVelocity),
       },
@@ -1861,6 +2052,7 @@
         smashReadyTimer: round2(state.opponent.smashReadyTimer),
         smashLastCharge: Math.round(state.opponent.smashLastCharge),
         smashLastSpeedBonus: Math.round(state.opponent.smashLastSpeedBonus),
+        smashReleaseSpinVelocity: Math.round(state.opponent.smashReleaseSpinVelocity),
         releaseShakePower: Math.round(state.opponent.releaseShakePower),
         releaseHeldVelocity: Math.round(state.opponent.releaseHeldVelocity),
       },
@@ -1882,6 +2074,7 @@
         smashReleaseWindow: SMASH_RELEASE_WINDOW,
         lastSmashCharge: Math.round(state.ball.lastSmashCharge),
         lastSmashSpeedBonus: Math.round(state.ball.lastSmashSpeedBonus),
+        lastSpinVelocity: Math.round(state.ball.lastSpinVelocity),
         playerSmashSpeedBonus: Math.round(state.ball.playerSmashSpeedBonus),
         opponentSmashSpeedBonus: Math.round(state.ball.opponentSmashSpeedBonus),
         lastGoalProtectedSpeed: Math.round(state.ball.lastGoalProtectedSpeed),
@@ -1914,6 +2107,7 @@
         readyTimer: round2(state.player.smashReadyTimer),
         lastCharge: Math.round(state.player.smashLastCharge),
         lastSpeedBonus: Math.round(state.player.smashLastSpeedBonus),
+        releaseSpinVelocity: Math.round(state.player.smashReleaseSpinVelocity),
         releaseWindow: SMASH_RELEASE_WINDOW,
       },
       dragControl: {

@@ -132,7 +132,10 @@ function parseFrames(buffer) {
     offset += totalLength;
   }
 
-  return messages;
+  return {
+    messages,
+    remaining: buffer.subarray(offset),
+  };
 }
 
 function handleMessage(client, raw) {
@@ -258,6 +261,7 @@ server.on("upgrade", (req, socket) => {
     side,
     host: side === "left",
     socket,
+    receiveBuffer: Buffer.alloc(0),
   };
   clients.set(id, client);
 
@@ -273,7 +277,11 @@ server.on("upgrade", (req, socket) => {
   broadcastPeers();
 
   socket.on("data", (buffer) => {
-    parseFrames(buffer).forEach((frame) => {
+    client.receiveBuffer = Buffer.concat([client.receiveBuffer, buffer]);
+    const parsed = parseFrames(client.receiveBuffer);
+    client.receiveBuffer = parsed.remaining;
+
+    parsed.messages.forEach((frame) => {
       if (frame.close) {
         socket.end();
       } else if (frame.text) {
