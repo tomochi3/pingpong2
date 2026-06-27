@@ -314,6 +314,20 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Easy mode charge-plus-down then release returned the ball with stored spin (`lastSpinVelocity:360`, `spin:0.45`, `curveStrength:0.39`, spin score `+0.64`).
   - Standard web-game smoke test completed with no game console error artifacts and showed `version:"v1.7.2"`.
   - Visual check confirmed the updated tutorial text and spin award on a released charged hit.
+- Added training modes:
+  - Bumped the displayed game version to `v1.8.0`.
+  - Added `trainingMode` with `normal`, `training`, and `hard` values, exported through `render_game_to_text`.
+  - Added `T` to cycle `normal -> training -> hard -> normal`, plus `H` to jump directly to hard training.
+  - Training mode makes the AI opponent align to the ball and return every shot when no human right player is present.
+  - Hard training mode uses the same guaranteed return, with extra return speed and generated spin/curve on the opponent hit.
+  - Added menu/status text for the selected training mode and updated `readme.md`.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - `T` cycled `normal -> training -> hard -> normal`.
+  - Training mode returned the ball with `rally:1`, `goals.total:0`, `ball.velocityX:-545`, and no added spin.
+  - Hard training returned the ball with `rally:1`, `goals.total:0`, faster speed (`715` vs `545`), `lastSpinVelocity:760`, and `curveStrength:1.87`.
+  - Standard web-game smoke test completed with no game console error artifacts and showed `version:"v1.8.0"`.
+  - Visual checks confirmed the menu mode selector and hard training spin trail/score display.
 
 ## TODO
 

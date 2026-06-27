@@ -4,7 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.7.2";
+  const GAME_VERSION = "v1.8.0";
   const GOALS_TO_END = 5;
   const TUTORIAL_DURATION = 4.2;
   const PLAYER_MAX_SPEED = 900;
@@ -83,6 +83,7 @@
     winner: null,
     localTwoPlayer: false,
     easyMode: true,
+    trainingMode: "normal",
     rally: 0,
     goals: {
       player: 0,
@@ -213,6 +214,30 @@
 
   function isEasyModePaddle(paddle) {
     return state.easyMode && paddle === state.player;
+  }
+
+  function isTrainingOpponent() {
+    return !hasHumanRightPlayer() && (state.trainingMode === "training" || state.trainingMode === "hard");
+  }
+
+  function isHardTrainingOpponentPaddle(paddle) {
+    return isTrainingOpponent() && state.trainingMode === "hard" && paddle === state.opponent;
+  }
+
+  function trainingModeLabel(mode = state.trainingMode) {
+    if (mode === "hard") return "ハード";
+    if (mode === "training") return "トレーニング";
+    return "通常";
+  }
+
+  function cycleTrainingMode() {
+    if (state.trainingMode === "normal") {
+      state.trainingMode = "training";
+    } else if (state.trainingMode === "training") {
+      state.trainingMode = "hard";
+    } else {
+      state.trainingMode = "normal";
+    }
   }
 
   function hasHumanRightPlayer() {
@@ -825,12 +850,20 @@
     const smashCharge = paddle.smashLastCharge || 0;
     const smashSpeedBonus = smashCharge * SMASH_SPEED_BONUS_SCALE;
     const speedBeforeHit = ball.speed;
-    const speedWithoutSmash = Math.min(speedBeforeHit + RALLY_BALL_SPEED_GAIN + centerSpeedBonus, BALL_MAX_SPEED);
+    const hardTraining = isHardTrainingOpponentPaddle(paddle);
+    const hardTrainingSpeedBonus = hardTraining ? 170 + Math.min(state.rally * 8, 180) : 0;
+    const speedWithoutSmash = Math.min(speedBeforeHit + RALLY_BALL_SPEED_GAIN + centerSpeedBonus + hardTrainingSpeedBonus, BALL_MAX_SPEED);
     const speed = Math.min(speedWithoutSmash + smashSpeedBonus, BALL_MAX_SPEED);
     const appliedSmashSpeedBonus = Math.max(0, speed - speedWithoutSmash);
     const angle = offset * 0.88;
     const side = direction > 0 ? "player" : "opponent";
-    const spinVelocity = spinVelocityForPaddle(paddle);
+    const hardTrainingSpinVelocity = hardTraining
+      ? (Math.sin(state.rally * 1.7 + state.opponent.score * 0.9) >= 0 ? 1 : -1) * (760 + Math.min(state.rally * 18, 620))
+      : 0;
+    const baseSpinVelocity = spinVelocityForPaddle(paddle);
+    const spinVelocity = Math.abs(hardTrainingSpinVelocity) > Math.abs(baseSpinVelocity)
+      ? hardTrainingSpinVelocity
+      : baseSpinVelocity;
     const spinPower = spinVelocity / SPIN_REFERENCE_SPEED;
     const spinAmount = round2(Math.abs(spinPower) * SPIN_SCORE_REFERENCE);
     const curveStrength = spinCurveStrength(spinAmount, offset);
@@ -992,6 +1025,13 @@
 
     const ball = state.ball;
     const opponent = state.opponent;
+    if (isTrainingOpponent()) {
+      const previousY = opponent.y;
+      opponent.y = ball.y - opponent.h / 2;
+      opponent.vy = dt > 0 ? (opponent.y - previousY) / dt : 0;
+      return;
+    }
+
     const center = rectCenterY(opponent);
     const aimNoise = Math.sin((state.rally + state.player.score * 3 + state.opponent.score) * 1.9) * 34;
     const target = ball.vx > 0 ? ball.y + aimNoise : FIELD_H / 2;
@@ -1045,6 +1085,9 @@
     }
 
     syncEasyPaddleToBall(state.player);
+    if (isTrainingOpponent()) {
+      state.opponent.y = ball.y - state.opponent.h / 2;
+    }
 
     const playerCollision = ball.vx < 0 ? paddleCollision(state.player, previousX, previousY) : { hit: false };
     if (playerCollision.hit) {
@@ -1362,6 +1405,8 @@
     ctx.fillStyle = state.easyMode ? "#1c84b4" : "#607580";
     ctx.font = "800 18px Inter, system-ui, sans-serif";
     ctx.fillText(`E: 簡単モード ${state.easyMode ? "ON" : "OFF"}（初期ON）`, FIELD_W / 2, 542);
+    ctx.fillStyle = state.trainingMode === "hard" ? "#ef5c43" : state.trainingMode === "training" ? "#1c84b4" : "#607580";
+    ctx.fillText(`T: ${trainingModeLabel()} / H: ハード`, FIELD_W / 2, 572);
   }
 
   function drawPointNotice() {
@@ -1515,6 +1560,9 @@
     }
     if (state.easyMode) {
       label += " / 簡単ON";
+    }
+    if (state.trainingMode !== "normal") {
+      label += ` / ${trainingModeLabel()}`;
     }
 
     ctx.save();
@@ -1763,6 +1811,7 @@
       lastScoreReason: state.lastScoreReason,
       winner: state.winner,
       easyMode: state.easyMode,
+      trainingMode: state.trainingMode,
       rally: state.rally,
       goals: { ...state.goals },
       player: copyPaddle(state.player),
@@ -1783,6 +1832,7 @@
     state.lastScoreReason = snapshot.lastScoreReason;
     state.winner = snapshot.winner;
     state.easyMode = Boolean(snapshot.easyMode);
+    state.trainingMode = snapshot.trainingMode || "normal";
     state.rally = snapshot.rally;
     state.goals = { ...snapshot.goals };
     applyPaddleSnapshot(state.player, snapshot.player);
@@ -1932,6 +1982,12 @@
     } else if (event.code === "KeyE") {
       event.preventDefault();
       state.easyMode = !state.easyMode;
+    } else if (event.code === "KeyT") {
+      event.preventDefault();
+      cycleTrainingMode();
+    } else if (event.code === "KeyH") {
+      event.preventDefault();
+      state.trainingMode = "hard";
     } else if (event.code === "Digit2") {
       event.preventDefault();
       startLocalTwoPlayerGame();
@@ -2013,6 +2069,12 @@
         playerAlignedToBall: state.easyMode
           ? Math.round(rectCenterY(state.player)) === Math.round(state.ball.y)
           : false,
+      },
+      trainingMode: {
+        mode: state.trainingMode,
+        label: trainingModeLabel(),
+        opponentGuaranteedReturn: isTrainingOpponent(),
+        hard: state.trainingMode === "hard",
       },
       score: {
         player: round2(state.player.score),
