@@ -4,7 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.4.4";
+  const GAME_VERSION = "v1.6.0";
   const GOALS_TO_END = 5;
   const TUTORIAL_DURATION = 4.2;
   const PLAYER_MAX_SPEED = 900;
@@ -25,7 +25,13 @@
   const BALL_BASE_SPEED = 440;
   const RALLY_BALL_SPEED_GAIN = 10;
   const CENTER_HIT_SPEED_BONUS = 95;
-  const BALL_MAX_SPEED = 860;
+  const SMASH_CHARGE_ACCEL = 420;
+  const SMASH_SPEED_BONUS_SCALE = 0.9;
+  const SMASH_RELEASE_WINDOW = 0.2;
+  const SMASH_MIN_CHARGE = 20;
+  const DRAG_MOVE_DEADZONE = 28;
+  const DRAG_SMASH_DEADZONE = 42;
+  const BALL_MAX_SPEED = 1600;
   const SPIN_SCORE_REFERENCE = 1.6;
   const SPIN_CURVE_BOOST_THRESHOLD = 1;
   const SPIN_ARC_ACCEL = 1250;
@@ -41,7 +47,32 @@
   let rafId = 0;
   let dpr = 1;
   let pointerY = null;
+  let dragControl = {
+    active: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    x: 0,
+    y: 0,
+    moveIntent: 0,
+  };
   let audioContext = null;
+  let network = {
+    socket: null,
+    connected: false,
+    side: "solo",
+    host: false,
+    playerCount: 0,
+    clients: [],
+    remoteInputs: {
+      left: { up: false, down: false, smash: false },
+      right: { up: false, down: false, smash: false },
+    },
+    lastSnapshotAt: 0,
+    lastInputAt: 0,
+    lastError: null,
+    urls: [],
+  };
 
   const state = {
     mode: "menu",
@@ -84,6 +115,11 @@
       vy: 0,
       upCharge: 0,
       downCharge: 0,
+      smashCharge: 0,
+      smashReadyTimer: 0,
+      smashLastCharge: 0,
+      smashLastSpeedBonus: 0,
+      smashPressedLastFrame: false,
       releaseShakePhase: 0,
       releaseShakePower: 0,
       releaseHeldVelocity: 0,
@@ -95,6 +131,16 @@
       h: PADDLE_H,
       score: 0,
       vy: 0,
+      upCharge: 0,
+      downCharge: 0,
+      smashCharge: 0,
+      smashReadyTimer: 0,
+      smashLastCharge: 0,
+      smashLastSpeedBonus: 0,
+      smashPressedLastFrame: false,
+      releaseShakePhase: 0,
+      releaseShakePower: 0,
+      releaseHeldVelocity: 0,
     },
     ball: {
       x: FIELD_W / 2,
@@ -108,6 +154,12 @@
       arcDirection: 0,
       lastCenterHitFactor: 0,
       lastCenterHitSpeedBonus: 0,
+      lastSmashCharge: 0,
+      lastSmashSpeedBonus: 0,
+      playerSmashSpeedBonus: 0,
+      opponentSmashSpeedBonus: 0,
+      lastGoalProtectedSpeed: 0,
+      lastGoalSpeedScore: 1,
       trail: [],
     },
   };
@@ -129,7 +181,7 @@
   }
 
   function currentPlayerSpeed() {
-    return Math.round(Math.abs(state.player.vy));
+    return Math.round(Math.abs(localPaddle().vy));
   }
 
   function currentBallSpeed() {
@@ -140,16 +192,97 @@
     return state.rally >= RELEASE_RALLY_THRESHOLD;
   }
 
+  function isNetworkGame() {
+    return network.connected && network.side !== "solo";
+  }
+
+  function isNetworkHost() {
+    return isNetworkGame() && network.host;
+  }
+
+  function hasHumanRightPlayer() {
+    return isNetworkHost() && network.clients.some((client) => client.side === "right");
+  }
+
+  function sideToPaddle(side) {
+    return side === "right" ? state.opponent : state.player;
+  }
+
+  function sideToScoreSide(side) {
+    return side === "right" ? "opponent" : "player";
+  }
+
+  function localPaddle() {
+    return network.side === "right" ? state.opponent : state.player;
+  }
+
   function isMoveKey(code) {
     return code === "ArrowUp" || code === "KeyW" || code === "ArrowDown" || code === "KeyS";
   }
 
-  function isUpKey(code) {
-    return code === "ArrowUp" || code === "KeyW";
+  function isSmashKey(code) {
+    return code === "ArrowLeft" || code === "KeyA";
   }
 
-  function isDownKey(code) {
-    return code === "ArrowDown" || code === "KeyS";
+  function dragInput() {
+    if (!dragControl.active) {
+      return {
+        dx: 0,
+        dy: 0,
+        up: false,
+        down: false,
+        smash: false,
+        moveIntent: 0,
+      };
+    }
+
+    const dx = dragControl.x - dragControl.startX;
+    const dy = dragControl.y - dragControl.startY;
+    const up = dy < -DRAG_MOVE_DEADZONE;
+    const down = dy > DRAG_MOVE_DEADZONE;
+
+    return {
+      dx,
+      dy,
+      up,
+      down,
+      smash: dx < -DRAG_SMASH_DEADZONE,
+      moveIntent: up ? -1 : down ? 1 : 0,
+    };
+  }
+
+  function isUpPressed() {
+    const drag = dragInput();
+    return keys.has("ArrowUp") || keys.has("KeyW") || drag.up;
+  }
+
+  function isDownPressed() {
+    const drag = dragInput();
+    return keys.has("ArrowDown") || keys.has("KeyS") || drag.down;
+  }
+
+  function isSmashPressed() {
+    return keys.has("ArrowLeft") || keys.has("KeyA") || dragInput().smash;
+  }
+
+  function localControlInput() {
+    return {
+      up: isUpPressed(),
+      down: isDownPressed(),
+      smash: isSmashPressed(),
+    };
+  }
+
+  function inputForSide(side) {
+    if (!isNetworkGame()) {
+      return side === "left" ? localControlInput() : { up: false, down: false, smash: false };
+    }
+
+    if (network.side === side) {
+      return localControlInput();
+    }
+
+    return network.remoteInputs[side] || { up: false, down: false, smash: false };
   }
 
   function activateTutorial(tutorial) {
@@ -177,12 +310,43 @@
     return true;
   }
 
+  function resetPaddleRelease(paddle) {
+    paddle.upCharge = 0;
+    paddle.downCharge = 0;
+    paddle.releaseShakePhase = 0;
+    paddle.releaseShakePower = 0;
+    paddle.releaseHeldVelocity = 0;
+  }
+
   function resetReleaseCharges() {
-    state.player.upCharge = 0;
-    state.player.downCharge = 0;
-    state.player.releaseShakePhase = 0;
-    state.player.releaseShakePower = 0;
-    state.player.releaseHeldVelocity = 0;
+    resetPaddleRelease(state.player);
+    resetPaddleRelease(state.opponent);
+  }
+
+  function resetPaddleSmash(paddle) {
+    paddle.smashCharge = 0;
+    paddle.smashReadyTimer = 0;
+    paddle.smashLastCharge = 0;
+    paddle.smashLastSpeedBonus = 0;
+    paddle.smashPressedLastFrame = false;
+  }
+
+  function resetSmashCharge() {
+    resetPaddleSmash(state.player);
+    resetPaddleSmash(state.opponent);
+  }
+
+  function resetDragControl() {
+    dragControl = {
+      active: false,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      x: 0,
+      y: 0,
+      moveIntent: 0,
+    };
+    pointerY = null;
   }
 
   function approach(value, target, amount) {
@@ -338,6 +502,8 @@
     state.lastScoreReason = null;
     state.rally = 0;
     state.spinNotice.timer = 0;
+    state.ball.lastGoalProtectedSpeed = 0;
+    state.ball.lastGoalSpeedScore = 1;
     resetReleaseCharges();
   }
 
@@ -354,6 +520,10 @@
     state.ball.arcDirection = 0;
     state.ball.lastCenterHitFactor = 0;
     state.ball.lastCenterHitSpeedBonus = 0;
+    state.ball.lastSmashCharge = 0;
+    state.ball.lastSmashSpeedBonus = 0;
+    state.ball.playerSmashSpeedBonus = 0;
+    state.ball.opponentSmashSpeedBonus = 0;
     state.ball.trail = [];
   }
 
@@ -363,7 +533,8 @@
     state.player.vy = 0;
     state.opponent.vy = 0;
     resetReleaseCharges();
-    pointerY = null;
+    resetSmashCharge();
+    resetDragControl();
   }
 
   function startGame() {
@@ -380,6 +551,33 @@
     state.lastPointAmount = amount;
   }
 
+  function armSmashReleaseForPaddle(paddle) {
+    if (state.mode !== "playing" && state.mode !== "point") return;
+
+    paddle.smashLastCharge = paddle.smashCharge;
+    paddle.smashCharge = 0;
+    paddle.smashLastSpeedBonus = 0;
+    paddle.smashReadyTimer = paddle.smashLastCharge >= SMASH_MIN_CHARGE ? SMASH_RELEASE_WINDOW : 0;
+    paddle.smashPressedLastFrame = false;
+  }
+
+  function armSmashRelease() {
+    armSmashReleaseForPaddle(localPaddle());
+  }
+
+  function goalScoreAmount(side) {
+    const rawProtectedSpeed = side === "opponent"
+      ? state.ball.playerSmashSpeedBonus
+      : state.ball.opponentSmashSpeedBonus;
+    const protectedSpeed = Math.min(rawProtectedSpeed, Math.max(0, state.ball.speed - BALL_BASE_SPEED));
+    const scoringSpeed = Math.max(BALL_BASE_SPEED, state.ball.speed - protectedSpeed);
+    const speedOverBase = Math.max(0, scoringSpeed - BALL_BASE_SPEED);
+    const speedScore = 1 + Math.pow(speedOverBase / 180, 1.45);
+    state.ball.lastGoalProtectedSpeed = Math.round(protectedSpeed);
+    state.ball.lastGoalSpeedScore = round2(speedScore);
+    return round2(speedScore);
+  }
+
   function checkWinner() {
     if (state.goals.total < GOALS_TO_END) {
       return false;
@@ -394,12 +592,13 @@
   }
 
   function awardPoint(side) {
-    addScore(side, 1);
+    const amount = goalScoreAmount(side);
+    addScore(side, amount);
     state.goals[side] += 1;
     state.goals.total += 1;
     showTutorial(
       "goal-count",
-      ["ゴールだけを5回数えると終了", "スピン点は別で加算されます"],
+      ["5ゴールで終了。スピン点は別"],
       FIELD_W / 2,
       178,
       "center"
@@ -409,6 +608,7 @@
 
     state.rally = 0;
     resetReleaseCharges();
+    resetSmashCharge();
 
     if (checkWinner()) {
       return;
@@ -450,11 +650,7 @@
   }
 
   function spinVelocityForPaddle(paddle) {
-    if (paddle !== state.player) {
-      return paddle.vy;
-    }
-
-    const heldVelocity = state.player.releaseHeldVelocity;
+    const heldVelocity = paddle.releaseHeldVelocity || 0;
     return Math.abs(heldVelocity) > Math.abs(paddle.vy) ? heldVelocity : paddle.vy;
   }
 
@@ -473,12 +669,48 @@
     return clamp(1 - Math.abs(offset), 0, 1);
   }
 
+  function updateSmashChargeForPaddle(paddle, input, dt) {
+    if (state.mode !== "playing" && state.mode !== "point") return;
+
+    if (input.smash) {
+      paddle.smashCharge += SMASH_CHARGE_ACCEL * dt;
+      paddle.smashReadyTimer = 0;
+      paddle.smashPressedLastFrame = true;
+      return;
+    }
+
+    if (paddle.smashPressedLastFrame) {
+      armSmashReleaseForPaddle(paddle);
+      return;
+    }
+
+    if (paddle.smashReadyTimer > 0) {
+      paddle.smashReadyTimer = Math.max(0, paddle.smashReadyTimer - dt);
+    }
+  }
+
+  function updateSmashCharge(dt) {
+    updateSmashChargeForPaddle(state.player, inputForSide("left"), dt);
+    if (hasHumanRightPlayer()) {
+      updateSmashChargeForPaddle(state.opponent, inputForSide("right"), dt);
+    }
+  }
+
+  function paddleCanHitBall(paddle) {
+    return paddle.smashReadyTimer > 0;
+  }
+
   function bounceFromPaddle(paddle, direction) {
     const ball = state.ball;
     const offset = clamp((ball.y - rectCenterY(paddle)) / (paddle.h / 2), -1, 1);
     const centerFactor = centerHitFactor(offset);
     const centerSpeedBonus = CENTER_HIT_SPEED_BONUS * centerFactor * centerFactor;
-    const speed = Math.min(ball.speed + RALLY_BALL_SPEED_GAIN + centerSpeedBonus, BALL_MAX_SPEED);
+    const smashCharge = paddle.smashLastCharge || 0;
+    const smashSpeedBonus = smashCharge * SMASH_SPEED_BONUS_SCALE;
+    const speedBeforeHit = ball.speed;
+    const speedWithoutSmash = Math.min(speedBeforeHit + RALLY_BALL_SPEED_GAIN + centerSpeedBonus, BALL_MAX_SPEED);
+    const speed = Math.min(speedWithoutSmash + smashSpeedBonus, BALL_MAX_SPEED);
+    const appliedSmashSpeedBonus = Math.max(0, speed - speedWithoutSmash);
     const angle = offset * 0.88;
     const side = direction > 0 ? "player" : "opponent";
     const spinVelocity = spinVelocityForPaddle(paddle);
@@ -495,43 +727,34 @@
     ball.arcDirection = Math.sign(ball.spin || spinPower || offset || 1);
     ball.lastCenterHitFactor = centerFactor;
     ball.lastCenterHitSpeedBonus = centerSpeedBonus;
+    ball.lastSmashCharge = smashCharge;
+    ball.lastSmashSpeedBonus = appliedSmashSpeedBonus;
+    if (paddle === state.player) {
+      ball.playerSmashSpeedBonus += appliedSmashSpeedBonus;
+    } else if (paddle === state.opponent) {
+      ball.opponentSmashSpeedBonus += appliedSmashSpeedBonus;
+    }
     ball.trail = [{ x: ball.x, y: ball.y, strength: ball.curveStrength }];
     ball.x = direction > 0 ? paddle.x + paddle.w + ball.r : paddle.x - ball.r;
+    paddle.smashReadyTimer = 0;
+    paddle.smashLastSpeedBonus = appliedSmashSpeedBonus;
     state.rally += 1;
 
     showTutorial(
-      "ball-speed",
-      ["打ち返すたびボール速度UP", "ラリーが続くほど速くなります"],
+      "return-speed",
+      ["芯ヒットとラリーで返球加速"],
       FIELD_W / 2,
       FIELD_H - 178,
       "center"
     );
-    if (centerFactor >= 0.72) {
-      showTutorial(
-        "center-hit",
-        ["真ん中で当てるほど返球が速い", "芯を食うと大きく加速します"],
-        ball.x + (direction > 0 ? 98 : -98),
-        ball.y + 72,
-        direction > 0 ? "left" : "right"
-      );
-    }
     playPaddleSound(side, spinAmount, spinPower);
     if (spinAmount > 0) {
       showTutorial(
         "spin",
-        ["保持している速度でスピン", "速いほど点数とカーブが大きい"],
+        ["速度でスピン点とカーブ発生"],
         ball.x + (direction > 0 ? 96 : -96),
         ball.y - 78,
         direction > 0 ? "left" : "right"
-      );
-    }
-    if (spinAmount >= SPIN_CURVE_BOOST_THRESHOLD) {
-      showTutorial(
-        "high-spin",
-        ["1.00以上のスピンは大きくうねる", "上限なしで点数も伸びます"],
-        FIELD_W / 2,
-        170,
-        "center"
       );
     }
     awardSpinScore(side, spinAmount, ball.x, ball.y);
@@ -545,48 +768,39 @@
     return approach(current, 0, brake * dt);
   }
 
-  function updateReleasePlayerVelocity(upPressed, downPressed, dt) {
-    const player = state.player;
-
-    if (upPressed) {
-      player.upCharge += RELEASE_CHARGE_ACCEL * dt;
+  function updateReleasePaddleVelocity(paddle, input, dt) {
+    if (input.up) {
+      paddle.upCharge += RELEASE_CHARGE_ACCEL * dt;
     } else {
-      player.upCharge = 0;
+      paddle.upCharge = 0;
     }
 
-    if (downPressed) {
-      player.downCharge += RELEASE_CHARGE_ACCEL * dt;
+    if (input.down) {
+      paddle.downCharge += RELEASE_CHARGE_ACCEL * dt;
     } else {
-      player.downCharge = 0;
+      paddle.downCharge = 0;
     }
 
-    player.releaseHeldVelocity = player.downCharge - player.upCharge;
+    paddle.releaseHeldVelocity = paddle.downCharge - paddle.upCharge;
 
-    if (upPressed || downPressed) {
-      if (upPressed && downPressed) {
-        showTutorial(
-          "charge",
-          ["上下同時押しで両方チャージ", "パドルが震えながら速度を溜めます"],
-          player.x + player.w + 42,
-          player.y + player.h / 2,
-          "left"
-        );
-        const chargePower = (player.upCharge + player.downCharge) / 2;
+    if (input.up || input.down) {
+      if (input.up && input.down) {
+        const chargePower = (paddle.upCharge + paddle.downCharge) / 2;
         const shakeRate = RELEASE_SHAKE_BASE_RATE + Math.sqrt(chargePower) * RELEASE_SHAKE_RATE_SCALE;
         const shakeSpeed = RELEASE_SHAKE_BASE_SPEED + chargePower * RELEASE_SHAKE_SPEED_SCALE;
-        player.releaseShakePhase += shakeRate * dt;
-        player.releaseShakePower = chargePower;
-        player.vy = Math.sin(player.releaseShakePhase) * shakeSpeed;
+        paddle.releaseShakePhase += shakeRate * dt;
+        paddle.releaseShakePower = chargePower;
+        paddle.vy = Math.sin(paddle.releaseShakePhase) * shakeSpeed;
       } else {
-        player.releaseShakePower = 0;
-        player.vy = downPressed ? player.downCharge : -player.upCharge;
+        paddle.releaseShakePower = 0;
+        paddle.vy = input.down ? paddle.downCharge : -paddle.upCharge;
       }
       return;
     }
 
-    player.releaseShakePower = 0;
-    player.releaseHeldVelocity = 0;
-    player.vy = approach(player.vy, 0, PLAYER_BRAKE * dt);
+    paddle.releaseShakePower = 0;
+    paddle.releaseHeldVelocity = 0;
+    paddle.vy = approach(paddle.vy, 0, PLAYER_BRAKE * dt);
   }
 
   function keepPaddleInBounds(paddle) {
@@ -600,26 +814,24 @@
     }
   }
 
-  function updatePlayer(dt) {
-    const upPressed = keys.has("ArrowUp") || keys.has("KeyW");
-    const downPressed = keys.has("ArrowDown") || keys.has("KeyS");
+  function updateHumanPaddle(paddle, input, dt) {
     let intent = 0;
-    if (upPressed) intent -= 1;
-    if (downPressed) intent += 1;
+    if (input.up) intent -= 1;
+    if (input.down) intent += 1;
 
-    if (pointerY !== null && !isReleaseMode()) {
-      const target = pointerY - state.player.h / 2;
-      const delta = target - state.player.y;
+    if (pointerY !== null && !isReleaseMode() && paddle === localPaddle()) {
+      const target = pointerY - paddle.h / 2;
+      const delta = target - paddle.y;
       intent = Math.abs(delta) > 8 ? Math.sign(delta) : 0;
-      resetReleaseCharges();
+      resetPaddleRelease(paddle);
     }
 
     if (isReleaseMode()) {
-      updateReleasePlayerVelocity(upPressed, downPressed, dt);
+      updateReleasePaddleVelocity(paddle, input, dt);
     } else {
-      resetReleaseCharges();
-      state.player.vy = updatePaddleVelocity(
-        state.player.vy,
+      resetPaddleRelease(paddle);
+      paddle.vy = updatePaddleVelocity(
+        paddle.vy,
         intent,
         PLAYER_ACCEL,
         PLAYER_BRAKE,
@@ -628,20 +840,31 @@
       );
     }
 
-    state.player.y += state.player.vy * dt;
+    paddle.y += paddle.vy * dt;
 
-    if (pointerY !== null && !isReleaseMode()) {
-      const target = pointerY - state.player.h / 2;
-      if (Math.abs(target - state.player.y) < 7 && Math.abs(state.player.vy) < 220) {
-        state.player.y = target;
-        state.player.vy = 0;
+    if (pointerY !== null && !isReleaseMode() && paddle === localPaddle()) {
+      const target = pointerY - paddle.h / 2;
+      if (Math.abs(target - paddle.y) < 7 && Math.abs(paddle.vy) < 220) {
+        paddle.y = target;
+        paddle.vy = 0;
       }
     }
 
-    keepPaddleInBounds(state.player);
+    keepPaddleInBounds(paddle);
+  }
+
+  function updatePlayer(dt) {
+    const drag = dragInput();
+    dragControl.moveIntent = drag.moveIntent;
+    updateHumanPaddle(state.player, inputForSide("left"), dt);
   }
 
   function updateOpponent(dt) {
+    if (hasHumanRightPlayer()) {
+      updateHumanPaddle(state.opponent, inputForSide("right"), dt);
+      return;
+    }
+
     const ball = state.ball;
     const opponent = state.opponent;
     const center = rectCenterY(opponent);
@@ -695,12 +918,16 @@
     }
 
     if (ball.vx < 0 && ballHitsPaddle(state.player)) {
-      bounceFromPaddle(state.player, 1);
+      if (paddleCanHitBall(state.player)) {
+        bounceFromPaddle(state.player, 1);
+      }
       if (state.mode === "gameover") return;
     }
 
     if (ball.vx > 0 && ballHitsPaddle(state.opponent)) {
-      bounceFromPaddle(state.opponent, -1);
+      if (!hasHumanRightPlayer() || paddleCanHitBall(state.opponent)) {
+        bounceFromPaddle(state.opponent, -1);
+      }
       if (state.mode === "gameover") return;
     }
 
@@ -718,23 +945,22 @@
       state.spinNotice.timer = Math.max(0, state.spinNotice.timer - step);
     }
     updateTutorials(step);
+    syncNetworkInput();
+
+    if (isNetworkGame() && !network.host) {
+      return;
+    }
+
+    updateSmashCharge(step);
 
     if (state.mode === "point") {
-      if (keys.has("ArrowUp") || keys.has("KeyW") || keys.has("ArrowDown") || keys.has("KeyS")) {
-        showTutorial(
-          "point-move",
-          ["ゴール後もパドル操作できます", "次のサーブに備えよう"],
-          FIELD_W / 2,
-          FIELD_H - 176,
-          "center"
-        );
-      }
       updatePlayer(step);
       updateOpponent(step);
       state.pointTimer -= step;
       if (state.pointTimer <= 0) {
         state.mode = "playing";
       }
+      syncNetworkSnapshot();
       return;
     }
 
@@ -743,6 +969,7 @@
     updatePlayer(step);
     updateOpponent(step);
     updateBall(step);
+    syncNetworkSnapshot();
   }
 
   function updateTutorials(dt) {
@@ -801,7 +1028,9 @@
   }
 
   function drawPaddle(paddle, color, shadow) {
-    const releaseShake = paddle === state.player ? state.player.releaseShakePower : 0;
+    const releaseShake = paddle.releaseShakePower || 0;
+    const smashCharge = paddle.smashCharge || 0;
+    const smashReady = paddle.smashReadyTimer || 0;
 
     if (releaseShake > 0) {
       const alpha = clamp(0.12 + releaseShake / 5200, 0.12, 0.34);
@@ -812,6 +1041,23 @@
       drawRoundedRect(paddle.x - 3, paddle.y - offset, paddle.w + 6, paddle.h, 7);
       ctx.fillStyle = `rgba(28, 132, 180, ${alpha})`;
       drawRoundedRect(paddle.x - 3, paddle.y + offset, paddle.w + 6, paddle.h, 7);
+      ctx.restore();
+    }
+
+    if (smashCharge > 0 || smashReady > 0) {
+      const chargeAlpha = smashReady > 0 ? 0.42 : clamp(0.12 + smashCharge / 2600, 0.12, 0.42);
+      const chargeHeight = clamp(18 + smashCharge / 7, 18, paddle.h + 28);
+
+      ctx.save();
+      ctx.shadowColor = "rgba(239, 92, 67, 0.38)";
+      ctx.shadowBlur = smashReady > 0 ? 28 : 18;
+      ctx.fillStyle = `rgba(239, 92, 67, ${chargeAlpha})`;
+      drawRoundedRect(paddle.x - 12, rectCenterY(paddle) - chargeHeight / 2, 6, chargeHeight, 4);
+      if (smashReady > 0) {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.82)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(paddle.x - 17, paddle.y - 7, paddle.w + 34, paddle.h + 14);
+      }
       ctx.restore();
     }
 
@@ -878,6 +1124,54 @@
     ctx.fill();
   }
 
+  function drawDragGuide() {
+    if (!dragControl.active || (state.mode !== "playing" && state.mode !== "point")) return;
+
+    const drag = dragInput();
+    const pull = Math.hypot(drag.dx, drag.dy);
+    if (pull < 8) return;
+
+    const alpha = clamp(pull / 180, 0.22, 0.72);
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = `rgba(31, 42, 51, ${alpha * 0.42})`;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(dragControl.startX, dragControl.startY);
+    ctx.lineTo(dragControl.x, dragControl.y);
+    ctx.stroke();
+
+    if (drag.moveIntent !== 0) {
+      ctx.strokeStyle = `rgba(28, 132, 180, ${alpha})`;
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(dragControl.startX, dragControl.startY);
+      ctx.lineTo(dragControl.startX, dragControl.y);
+      ctx.stroke();
+    }
+
+    if (drag.smash) {
+      ctx.strokeStyle = `rgba(239, 92, 67, ${alpha})`;
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(dragControl.startX, dragControl.startY);
+      ctx.lineTo(dragControl.x, dragControl.startY);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(31, 42, 51, 0.22)";
+    ctx.beginPath();
+    ctx.arc(dragControl.startX, dragControl.startY, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = drag.smash ? "#ef5c43" : drag.moveIntent !== 0 ? "#1c84b4" : "rgba(31, 42, 51, 0.54)";
+    ctx.beginPath();
+    ctx.arc(dragControl.x, dragControl.y, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function drawSpinNotice() {
     if (state.spinNotice.timer <= 0) return;
 
@@ -929,8 +1223,8 @@
     drawButtonHint(actionText, FIELD_W / 2, 405, 310);
 
     ctx.fillStyle = "#607580";
-    ctx.font = "500 21px Inter, system-ui, sans-serif";
-    ctx.fillText("W/S・↑/↓で解放移動  同時押しでチャージ  P/Enterで一時停止", FIELD_W / 2, 478);
+    ctx.font = "500 20px Inter, system-ui, sans-serif";
+    ctx.fillText("W/S・↑/↓ / 上下ドラッグで移動  ←/A / 左ドラッグで溜め、離して打つ", FIELD_W / 2, 478);
   }
 
   function drawPointNotice() {
@@ -992,10 +1286,11 @@
 
   function drawHud() {
     const releaseActive = isReleaseMode();
+    const paddle = localPaddle();
     const w = releaseActive ? 390 : 300;
-    const h = releaseActive ? 68 : 46;
+    const h = releaseActive ? 92 : 46;
     const x = FIELD_W / 2 - w / 2;
-    const y = FIELD_H - (releaseActive ? 104 : 82);
+    const y = FIELD_H - (releaseActive ? 128 : 82);
 
     ctx.save();
     ctx.textAlign = "left";
@@ -1029,8 +1324,18 @@
 
       ctx.fillStyle = "#607580";
       ctx.font = "700 13px Inter, system-ui, sans-serif";
-      ctx.fillText(`UP ${Math.round(state.player.upCharge)}`, x + 16, y + 45);
-      ctx.fillText(`DOWN ${Math.round(state.player.downCharge)}`, x + 142, y + 45);
+      ctx.fillText(`UP ${Math.round(paddle.upCharge)}`, x + 16, y + 45);
+      ctx.fillText(`DOWN ${Math.round(paddle.downCharge)}`, x + 142, y + 45);
+
+      const shotValue = paddle.smashCharge > 0
+        ? Math.round(paddle.smashCharge)
+        : Math.round(paddle.smashLastCharge);
+      ctx.fillStyle = paddle.smashReadyTimer > 0 ? "#ef5c43" : "#607580";
+      ctx.font = "800 13px Inter, system-ui, sans-serif";
+      ctx.fillText(paddle.smashReadyTimer > 0 ? "SHOT READY" : "SHOT", x + 16, y + 72);
+      ctx.fillStyle = "#1f2a33";
+      ctx.font = "800 18px Inter, system-ui, sans-serif";
+      ctx.fillText(String(shotValue), x + 112, y + 72);
     }
 
     ctx.restore();
@@ -1046,6 +1351,25 @@
     ctx.restore();
   }
 
+  function drawNetworkStatus() {
+    let label = "SOLO / LANサーバーなし";
+    if (isNetworkGame()) {
+      const sideLabel = network.side === "right" ? "RIGHT" : network.side === "left" ? "LEFT" : "WATCH";
+      const peerLabel = network.playerCount >= 2 ? "対戦中" : "相手待ち";
+      label = `LAN ${sideLabel} / ${peerLabel}`;
+    } else if (network.lastError) {
+      label = "SOLO / LAN未接続";
+    }
+
+    ctx.save();
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = "rgba(31, 42, 51, 0.44)";
+    ctx.font = "700 13px Inter, system-ui, sans-serif";
+    ctx.fillText(label, 20, FIELD_H - 14);
+    ctx.restore();
+  }
+
   function render() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, FIELD_W, FIELD_H);
@@ -1055,12 +1379,13 @@
     drawPaddle(state.opponent, "#283742", "rgba(40, 55, 66, 0.24)");
     drawBallTrail();
     drawBall();
+    drawDragGuide();
     drawSpinNotice();
     drawPointNotice();
     drawHud();
 
     if (state.mode === "menu") {
-      drawOverlay("PING PONG", "5ゴールで終了。最初から解放モードで勝負します。", "クリック / Spaceで開始");
+      drawOverlay("PING PONG", "5ゴールで終了。最初から解放モードで勝負します。", "クリック / ドラッグ / Spaceで開始");
     } else if (state.mode === "paused") {
       drawOverlay("PAUSE", "ラリーはここで止まっています。", "P / Enter / Spaceで再開");
     } else if (state.mode === "gameover") {
@@ -1070,6 +1395,7 @@
     }
 
     drawTutorialBubbles();
+    drawNetworkStatus();
     drawVersion();
   }
 
@@ -1096,7 +1422,99 @@
     };
   }
 
+  function showMoveTutorial() {
+    const paddle = localPaddle();
+    showTutorial(
+      "move",
+      ["長押し/上下ドラッグで加速"],
+      paddle === state.opponent ? paddle.x - 46 : paddle.x + paddle.w + 46,
+      paddle.y + paddle.h / 2,
+      paddle === state.opponent ? "right" : "left"
+    );
+  }
+
+  function showSmashTutorial() {
+    const paddle = localPaddle();
+    showTutorial(
+      "smash",
+      ["←/A/左ドラッグで溜め", "離して打つ"],
+      paddle === state.opponent ? paddle.x - 52 : paddle.x + paddle.w + 52,
+      paddle.y + paddle.h / 2 + 52,
+      paddle === state.opponent ? "right" : "left"
+    );
+  }
+
+  function showChargeTutorialIfNeeded() {
+    if (!isReleaseMode()) return;
+
+    const hasUp = isUpPressed();
+    const hasDown = isDownPressed();
+    if (!hasUp || !hasDown) return;
+
+    showTutorial(
+      "charge",
+      ["上下同時で速度溜め", "片方を離すと反対へ発射"],
+      localPaddle() === state.opponent ? localPaddle().x - 42 : localPaddle().x + localPaddle().w + 42,
+      localPaddle().y + localPaddle().h / 2,
+      localPaddle() === state.opponent ? "right" : "left"
+    );
+  }
+
+  function startDragControl(event) {
+    const point = canvasPoint(event);
+    pointerY = point.y;
+    dragControl = {
+      active: true,
+      pointerId: event.pointerId,
+      startX: point.x,
+      startY: point.y,
+      x: point.x,
+      y: point.y,
+      moveIntent: 0,
+    };
+  }
+
+  function updateDragControl(event) {
+    if (!dragControl.active || dragControl.pointerId !== event.pointerId) return;
+
+    const wasSmashPressed = isSmashPressed();
+    const previousMoveIntent = dragControl.moveIntent;
+    const point = canvasPoint(event);
+    pointerY = point.y;
+    dragControl.x = point.x;
+    dragControl.y = point.y;
+
+    const drag = dragInput();
+    dragControl.moveIntent = drag.moveIntent;
+
+    if (drag.moveIntent !== 0 && previousMoveIntent === 0 && (state.mode === "playing" || state.mode === "point")) {
+      showMoveTutorial();
+    }
+    showChargeTutorialIfNeeded();
+    if (!wasSmashPressed && isSmashPressed()) {
+      showSmashTutorial();
+    }
+    if (wasSmashPressed && !isSmashPressed()) {
+      armSmashRelease();
+    }
+  }
+
+  function endDragControl(event) {
+    if (!dragControl.active || dragControl.pointerId !== event.pointerId) return;
+
+    const wasSmashPressed = isSmashPressed();
+    resetDragControl();
+    if (wasSmashPressed && !isSmashPressed()) {
+      armSmashRelease();
+    }
+  }
+
   function togglePause() {
+    if (isNetworkGame() && !network.host) {
+      sendNetworkControl("pause-toggle");
+      return;
+    }
+
     if (state.mode === "playing") {
       state.mode = "paused";
     } else if (state.mode === "paused") {
@@ -1107,6 +1525,11 @@
 
   function handleStartResume() {
     resumeAudio();
+
+    if (isNetworkGame() && !network.host) {
+      sendNetworkControl("start");
+      return;
+    }
 
     if (state.mode === "menu" || state.mode === "gameover") {
       startGame();
@@ -1125,28 +1548,204 @@
     resizeCanvas();
   }
 
+  function sendNetworkMessage(message) {
+    if (!network.socket || network.socket.readyState !== WebSocket.OPEN) return false;
+    network.socket.send(JSON.stringify(message));
+    return true;
+  }
+
+  function sendNetworkControl(action) {
+    sendNetworkMessage({ type: "control", action });
+  }
+
+  function syncNetworkInput() {
+    if (!isNetworkGame() || network.side === "spectator") return;
+
+    const now = performance.now();
+    if (now - network.lastInputAt < 30) return;
+    network.lastInputAt = now;
+    sendNetworkMessage({ type: "input", input: localControlInput() });
+  }
+
+  function copyPaddle(paddle) {
+    return {
+      x: paddle.x,
+      y: paddle.y,
+      w: paddle.w,
+      h: paddle.h,
+      score: paddle.score,
+      vy: paddle.vy,
+      upCharge: paddle.upCharge,
+      downCharge: paddle.downCharge,
+      smashCharge: paddle.smashCharge,
+      smashReadyTimer: paddle.smashReadyTimer,
+      smashLastCharge: paddle.smashLastCharge,
+      smashLastSpeedBonus: paddle.smashLastSpeedBonus,
+      smashPressedLastFrame: paddle.smashPressedLastFrame,
+      releaseShakePhase: paddle.releaseShakePhase,
+      releaseShakePower: paddle.releaseShakePower,
+      releaseHeldVelocity: paddle.releaseHeldVelocity,
+    };
+  }
+
+  function applyPaddleSnapshot(paddle, snapshot) {
+    Object.assign(paddle, snapshot);
+  }
+
+  function createNetworkSnapshot() {
+    return {
+      mode: state.mode,
+      pointTimer: state.pointTimer,
+      lastPoint: state.lastPoint,
+      lastPointAmount: state.lastPointAmount,
+      lastScoreReason: state.lastScoreReason,
+      winner: state.winner,
+      rally: state.rally,
+      goals: { ...state.goals },
+      player: copyPaddle(state.player),
+      opponent: copyPaddle(state.opponent),
+      ball: {
+        ...state.ball,
+        trail: state.ball.trail.slice(-32),
+      },
+      spinNotice: { ...state.spinNotice },
+    };
+  }
+
+  function applyNetworkSnapshot(snapshot) {
+    state.mode = snapshot.mode;
+    state.pointTimer = snapshot.pointTimer;
+    state.lastPoint = snapshot.lastPoint;
+    state.lastPointAmount = snapshot.lastPointAmount;
+    state.lastScoreReason = snapshot.lastScoreReason;
+    state.winner = snapshot.winner;
+    state.rally = snapshot.rally;
+    state.goals = { ...snapshot.goals };
+    applyPaddleSnapshot(state.player, snapshot.player);
+    applyPaddleSnapshot(state.opponent, snapshot.opponent);
+    state.ball = {
+      ...snapshot.ball,
+      trail: Array.isArray(snapshot.ball.trail) ? snapshot.ball.trail : [],
+    };
+    state.spinNotice = { ...snapshot.spinNotice };
+  }
+
+  function syncNetworkSnapshot() {
+    if (!isNetworkHost()) return;
+
+    const now = performance.now();
+    if (now - network.lastSnapshotAt < 45) return;
+    network.lastSnapshotAt = now;
+    sendNetworkMessage({ type: "snapshot", snapshot: createNetworkSnapshot() });
+  }
+
+  function handleNetworkMessage(message) {
+    if (message.type === "welcome") {
+      network.connected = true;
+      network.side = message.side;
+      network.host = Boolean(message.host);
+      network.clients = message.clients || [];
+      network.playerCount = network.clients.filter((client) => client.side === "left" || client.side === "right").length;
+      network.urls = message.urls || [];
+      network.lastError = null;
+      return;
+    }
+
+    if (message.type === "peers") {
+      network.clients = message.clients || [];
+      network.playerCount = network.clients.filter((client) => client.side === "left" || client.side === "right").length;
+      return;
+    }
+
+    if (message.type === "input" && message.side) {
+      network.remoteInputs[message.side] = {
+        up: Boolean(message.input && message.input.up),
+        down: Boolean(message.input && message.input.down),
+        smash: Boolean(message.input && message.input.smash),
+      };
+      return;
+    }
+
+    if (message.type === "snapshot" && !network.host && message.snapshot) {
+      applyNetworkSnapshot(message.snapshot);
+      return;
+    }
+
+    if (message.type === "control" && network.host) {
+      if (message.action === "start") {
+        handleStartResume();
+      } else if (message.action === "pause-toggle") {
+        togglePause();
+      }
+    }
+  }
+
+  function connectNetwork() {
+    if (!("WebSocket" in window) || !window.location.host || window.location.protocol === "file:" || !("fetch" in window)) return;
+
+    fetch("/lan-info.json", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("LAN server unavailable");
+        return response.json();
+      })
+      .then((info) => {
+        if (!info.enabled) throw new Error("LAN server unavailable");
+        network.urls = info.urls || [];
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+        network.socket = socket;
+
+        socket.addEventListener("message", (event) => {
+          try {
+            handleNetworkMessage(JSON.parse(event.data));
+          } catch (error) {
+            network.lastError = error.message;
+          }
+        });
+
+        socket.addEventListener("open", () => {
+          network.lastError = null;
+        });
+
+        socket.addEventListener("close", () => {
+          network.connected = false;
+          network.side = "solo";
+          network.host = false;
+          network.playerCount = 0;
+        });
+
+        socket.addEventListener("error", () => {
+          network.lastError = "LAN server unavailable";
+        });
+      })
+      .catch(() => {
+        network.lastError = "LAN server unavailable";
+      });
+  }
+
   canvas.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
     resumeAudio();
     canvas.setPointerCapture(event.pointerId);
-    pointerY = canvasPoint(event).y;
     handleStartResume();
+    startDragControl(event);
   });
 
   canvas.addEventListener("pointermove", (event) => {
-    if (event.buttons) {
-      pointerY = canvasPoint(event).y;
-    }
+    event.preventDefault();
+    updateDragControl(event);
   });
 
   canvas.addEventListener("pointerup", (event) => {
-    pointerY = null;
+    event.preventDefault();
+    endDragControl(event);
     if (canvas.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
     }
   });
 
   canvas.addEventListener("pointercancel", (event) => {
-    pointerY = null;
+    endDragControl(event);
     if (canvas.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
     }
@@ -1171,40 +1770,34 @@
     }
 
     if (!wasPressed && isMoveKey(event.code) && (state.mode === "playing" || state.mode === "point")) {
-      showTutorial(
-        "move",
-        ["長押しでパドルが加速", "離した方向の速度は0になります"],
-        state.player.x + state.player.w + 46,
-        state.player.y + state.player.h / 2,
-        "left"
-      );
+      showMoveTutorial();
+      showChargeTutorialIfNeeded();
+    }
+
+    if (!wasPressed && isSmashKey(event.code) && (state.mode === "playing" || state.mode === "point")) {
+      showSmashTutorial();
     }
   });
 
   window.addEventListener("keyup", (event) => {
-    const hadUp = keys.has("ArrowUp") || keys.has("KeyW");
-    const hadDown = keys.has("ArrowDown") || keys.has("KeyS");
+    const wasSmashPressed = isSmashPressed();
     keys.delete(event.code);
-    const hasUp = keys.has("ArrowUp") || keys.has("KeyW");
-    const hasDown = keys.has("ArrowDown") || keys.has("KeyS");
+    const stillSmashPressed = isSmashPressed();
 
     if (
-      isReleaseMode() &&
-      (state.mode === "playing" || state.mode === "point") &&
-      ((isUpKey(event.code) && hadDown && hasDown) || (isDownKey(event.code) && hadUp && hasUp))
+      isSmashKey(event.code) &&
+      wasSmashPressed &&
+      !stillSmashPressed &&
+      (state.mode === "playing" || state.mode === "point")
     ) {
-      showTutorial(
-        "release",
-        ["片方を離すとその方向は0", "押し続けた速度で一気に動きます"],
-        state.player.x + state.player.w + 48,
-        state.player.y + state.player.h / 2,
-        "left"
-      );
+      armSmashRelease();
     }
   });
 
   window.addEventListener("blur", () => {
     keys.clear();
+    resetSmashCharge();
+    resetDragControl();
   });
 
   window.addEventListener("resize", resizeCanvas);
@@ -1219,6 +1812,7 @@
   };
 
   window.render_game_to_text = () => {
+    const drag = dragInput();
     const payload = {
       coordinateSystem: "origin top-left, x right, y down, logical canvas 1280x720",
       version: GAME_VERSION,
@@ -1245,6 +1839,11 @@
         currentSpeed: currentPlayerSpeed(),
         upCharge: Math.round(state.player.upCharge),
         downCharge: Math.round(state.player.downCharge),
+        smashCharge: Math.round(state.player.smashCharge),
+        smashReady: state.player.smashReadyTimer > 0,
+        smashReadyTimer: round2(state.player.smashReadyTimer),
+        smashLastCharge: Math.round(state.player.smashLastCharge),
+        smashLastSpeedBonus: Math.round(state.player.smashLastSpeedBonus),
         releaseShakePower: Math.round(state.player.releaseShakePower),
         releaseHeldVelocity: Math.round(state.player.releaseHeldVelocity),
       },
@@ -1254,6 +1853,16 @@
         width: state.opponent.w,
         height: state.opponent.h,
         velocityY: Math.round(state.opponent.vy),
+        currentSpeed: Math.round(Math.abs(state.opponent.vy)),
+        upCharge: Math.round(state.opponent.upCharge),
+        downCharge: Math.round(state.opponent.downCharge),
+        smashCharge: Math.round(state.opponent.smashCharge),
+        smashReady: state.opponent.smashReadyTimer > 0,
+        smashReadyTimer: round2(state.opponent.smashReadyTimer),
+        smashLastCharge: Math.round(state.opponent.smashLastCharge),
+        smashLastSpeedBonus: Math.round(state.opponent.smashLastSpeedBonus),
+        releaseShakePower: Math.round(state.opponent.releaseShakePower),
+        releaseHeldVelocity: Math.round(state.opponent.releaseHeldVelocity),
       },
       ball: {
         x: Math.round(state.ball.x),
@@ -1268,6 +1877,15 @@
         centerHitMaxSpeedBonus: CENTER_HIT_SPEED_BONUS,
         lastCenterHitFactor: round2(state.ball.lastCenterHitFactor),
         lastCenterHitSpeedBonus: Math.round(state.ball.lastCenterHitSpeedBonus),
+        smashChargeAccel: SMASH_CHARGE_ACCEL,
+        smashSpeedBonusScale: SMASH_SPEED_BONUS_SCALE,
+        smashReleaseWindow: SMASH_RELEASE_WINDOW,
+        lastSmashCharge: Math.round(state.ball.lastSmashCharge),
+        lastSmashSpeedBonus: Math.round(state.ball.lastSmashSpeedBonus),
+        playerSmashSpeedBonus: Math.round(state.ball.playerSmashSpeedBonus),
+        opponentSmashSpeedBonus: Math.round(state.ball.opponentSmashSpeedBonus),
+        lastGoalProtectedSpeed: Math.round(state.ball.lastGoalProtectedSpeed),
+        lastGoalSpeedScore: round2(state.ball.lastGoalSpeedScore),
         maxSpeed: BALL_MAX_SPEED,
         spinUnlimited: true,
         spinScoreReference: SPIN_SCORE_REFERENCE,
@@ -1283,11 +1901,40 @@
       releaseMode: {
         active: isReleaseMode(),
         threshold: RELEASE_RALLY_THRESHOLD,
-        upCharge: Math.round(state.player.upCharge),
-        downCharge: Math.round(state.player.downCharge),
-        shakeActive: state.player.releaseShakePower > 0,
-        shakePower: Math.round(state.player.releaseShakePower),
-        heldVelocity: Math.round(state.player.releaseHeldVelocity),
+        upCharge: Math.round(localPaddle().upCharge),
+        downCharge: Math.round(localPaddle().downCharge),
+        shakeActive: localPaddle().releaseShakePower > 0,
+        shakePower: Math.round(localPaddle().releaseShakePower),
+        heldVelocity: Math.round(localPaddle().releaseHeldVelocity),
+      },
+      smashMode: {
+        charging: isSmashPressed(),
+        charge: Math.round(state.player.smashCharge),
+        ready: state.player.smashReadyTimer > 0,
+        readyTimer: round2(state.player.smashReadyTimer),
+        lastCharge: Math.round(state.player.smashLastCharge),
+        lastSpeedBonus: Math.round(state.player.smashLastSpeedBonus),
+        releaseWindow: SMASH_RELEASE_WINDOW,
+      },
+      dragControl: {
+        active: dragControl.active,
+        dx: Math.round(drag.dx),
+        dy: Math.round(drag.dy),
+        moveIntent: drag.moveIntent,
+        up: drag.up,
+        down: drag.down,
+        smash: drag.smash,
+        moveDeadzone: DRAG_MOVE_DEADZONE,
+        smashDeadzone: DRAG_SMASH_DEADZONE,
+      },
+      network: {
+        connected: network.connected,
+        side: network.side,
+        host: network.host,
+        playerCount: network.playerCount,
+        clients: network.clients,
+        urls: network.urls,
+        lastError: network.lastError,
       },
       tutorial: {
         active: state.tutorial.bubbles.length > 0,
@@ -1317,6 +1964,7 @@
     return JSON.stringify(payload);
   };
 
+  connectNetwork();
   resizeCanvas();
   rafId = requestAnimationFrame(frame);
 

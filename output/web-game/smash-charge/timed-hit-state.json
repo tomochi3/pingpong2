@@ -1,0 +1,118 @@
+{
+  "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+  "version": "v1.5.0",
+  "mode": "playing",
+  "score": {
+    "player": 0,
+    "opponent": 0,
+    "playerDisplay": "0.00",
+    "opponentDisplay": "0.00",
+    "targetGoals": 5
+  },
+  "goals": {
+    "player": 0,
+    "opponent": 0,
+    "total": 0,
+    "target": 5
+  },
+  "player": {
+    "x": 66,
+    "y": 302,
+    "width": 20,
+    "height": 116,
+    "velocityY": 0,
+    "currentSpeed": 0,
+    "upCharge": 0,
+    "downCharge": 0,
+    "smashCharge": 0,
+    "smashReady": false,
+    "smashReadyTimer": 0,
+    "smashLastCharge": 427,
+    "smashLastSpeedBonus": 384,
+    "releaseShakePower": 0,
+    "releaseHeldVelocity": 0
+  },
+  "opponent": {
+    "x": 1194,
+    "y": 302,
+    "width": 20,
+    "height": 116,
+    "velocityY": 0
+  },
+  "ball": {
+    "x": 97,
+    "y": 360,
+    "radius": 11,
+    "velocityX": 929,
+    "velocityY": 0,
+    "speed": 929,
+    "currentSpeed": 929,
+    "baseSpeed": 440,
+    "rallySpeedGain": 10,
+    "centerHitMaxSpeedBonus": 95,
+    "lastCenterHitFactor": 1,
+    "lastCenterHitSpeedBonus": 95,
+    "smashChargeAccel": 420,
+    "smashSpeedBonusScale": 0.9,
+    "smashReleaseWindow": 0.2,
+    "lastSmashCharge": 427,
+    "lastSmashSpeedBonus": 384,
+    "lastGoalSpeedScore": 1,
+    "maxSpeed": 1600,
+    "spinUnlimited": true,
+    "spinScoreReference": 1.6,
+    "spinReferenceSpeed": 900,
+    "spin": 0,
+    "curveStrength": 0,
+    "curveBoostThreshold": 1,
+    "verticalLimit": 760,
+    "arcDirection": 1,
+    "trailPoints": 1
+  },
+  "rally": 1,
+  "releaseMode": {
+    "active": true,
+    "threshold": 0,
+    "upCharge": 0,
+    "downCharge": 0,
+    "shakeActive": false,
+    "shakePower": 0,
+    "heldVelocity": 0
+  },
+  "smashMode": {
+    "charging": false,
+    "charge": 0,
+    "ready": false,
+    "readyTimer": 0,
+    "lastCharge": 427,
+    "lastSpeedBonus": 384,
+    "releaseWindow": 0.2
+  },
+  "tutorial": {
+    "active": true,
+    "activeIds": [
+      "smash"
+    ],
+    "seenIds": [
+      "smash"
+    ]
+  },
+  "lastPoint": null,
+  "lastPointAmount": 0,
+  "lastScoreReason": null,
+  "spinNotice": {
+    "active": false,
+    "side": null,
+    "amount": 0
+  },
+  "audio": {
+    "available": true,
+    "unlocked": true,
+    "eventCount": 1,
+    "lastCue": "paddle-hit",
+    "lastSpinAmount": 0,
+    "lastCueStrong": false,
+    "strongSpinThreshold": 0.8
+  },
+  "winner": null
+}

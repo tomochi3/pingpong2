@@ -1,0 +1,131 @@
+{
+  "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+  "version": "v1.5.2",
+  "mode": "point",
+  "score": {
+    "player": 0,
+    "opponent": 1,
+    "playerDisplay": "0.00",
+    "opponentDisplay": "1.00",
+    "targetGoals": 5
+  },
+  "goals": {
+    "player": 0,
+    "opponent": 1,
+    "total": 1,
+    "target": 5
+  },
+  "player": {
+    "x": 66,
+    "y": 570,
+    "width": 20,
+    "height": 116,
+    "velocityY": 0,
+    "currentSpeed": 0,
+    "upCharge": 0,
+    "downCharge": 0,
+    "smashCharge": 0,
+    "smashReady": false,
+    "smashReadyTimer": 0,
+    "smashLastCharge": 0,
+    "smashLastSpeedBonus": 0,
+    "releaseShakePower": 0,
+    "releaseHeldVelocity": 0
+  },
+  "opponent": {
+    "x": 1194,
+    "y": 321,
+    "width": 20,
+    "height": 116,
+    "velocityY": 225
+  },
+  "ball": {
+    "x": 640,
+    "y": 360,
+    "radius": 11,
+    "velocityX": 436,
+    "velocityY": -62,
+    "speed": 440,
+    "currentSpeed": 440,
+    "baseSpeed": 440,
+    "rallySpeedGain": 10,
+    "centerHitMaxSpeedBonus": 95,
+    "lastCenterHitFactor": 0,
+    "lastCenterHitSpeedBonus": 0,
+    "smashChargeAccel": 420,
+    "smashSpeedBonusScale": 0.9,
+    "smashReleaseWindow": 0.2,
+    "lastSmashCharge": 0,
+    "lastSmashSpeedBonus": 0,
+    "playerSmashSpeedBonus": 0,
+    "lastGoalProtectedSpeed": 0,
+    "lastGoalSpeedScore": 1,
+    "maxSpeed": 1600,
+    "spinUnlimited": true,
+    "spinScoreReference": 1.6,
+    "spinReferenceSpeed": 900,
+    "spin": 0,
+    "curveStrength": 0,
+    "curveBoostThreshold": 1,
+    "verticalLimit": 760,
+    "arcDirection": 0,
+    "trailPoints": 0
+  },
+  "rally": 0,
+  "releaseMode": {
+    "active": true,
+    "threshold": 0,
+    "upCharge": 0,
+    "downCharge": 0,
+    "shakeActive": false,
+    "shakePower": 0,
+    "heldVelocity": 0
+  },
+  "smashMode": {
+    "charging": false,
+    "charge": 0,
+    "ready": false,
+    "readyTimer": 0,
+    "lastCharge": 0,
+    "lastSpeedBonus": 0,
+    "releaseWindow": 0.2
+  },
+  "dragControl": {
+    "active": false,
+    "dx": 0,
+    "dy": 0,
+    "moveIntent": 0,
+    "up": false,
+    "down": false,
+    "smash": false,
+    "moveDeadzone": 28,
+    "smashDeadzone": 42
+  },
+  "tutorial": {
+    "active": true,
+    "activeIds": [
+      "move"
+    ],
+    "seenIds": [
+      "move"
+    ]
+  },
+  "lastPoint": "opponent",
+  "lastPointAmount": 1,
+  "lastScoreReason": "miss",
+  "spinNotice": {
+    "active": false,
+    "side": null,
+    "amount": 0
+  },
+  "audio": {
+    "available": true,
+    "unlocked": true,
+    "eventCount": 1,
+    "lastCue": "point",
+    "lastSpinAmount": 0,
+    "lastCueStrong": false,
+    "strongSpinThreshold": 0.8
+  },
+  "winner": null
+}

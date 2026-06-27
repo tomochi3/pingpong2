@@ -166,6 +166,65 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Rapid move/charge/release input showed only the `move` bubble, with `charge` and `release` remaining unseen and no `pendingIds` in state.
   - After the move bubble disappeared, repeating the simultaneous up/down action displayed `charge` for the first time.
   - Standard client run completed with no console error artifacts and showed `version:"v1.4.4"` with only one active bubble.
+- Reduced duplicate tutorial bubbles:
+  - Bumped the displayed game version to `v1.4.5`.
+  - Reduced tutorials to the minimum set: `move`, `charge`, `return-speed`, `spin`, and `goal-count`.
+  - Merged the old `ball-speed` and `center-hit` concepts into one `return-speed` bubble.
+  - Removed the old `release`, `high-spin`, and `point-move` bubbles; release behavior is now covered by the shorter `charge` bubble.
+  - Shortened tutorial text, including `move` to one line and `goal-count` to one compact line.
+- Verified with Playwright:
+  - During an active `move` bubble, simultaneous charge stayed unseen and did not stack.
+  - After the move bubble disappeared, re-performing simultaneous input displayed the compact `charge` bubble.
+  - Deterministic center return displayed the merged `return-speed` bubble and no removed tutorial IDs appeared.
+  - Standard client run completed with no console error artifacts and showed `version:"v1.4.5"`.
+- Added left/A smash charge:
+  - Bumped the displayed game version to `v1.5.0`.
+  - Holding `←` or `A` now builds a separate smash charge while still allowing normal up/down acceleration movement.
+  - Player paddle collisions now require releasing `←`/`A` during a short timing window; holding the charge through the collision misses the ball.
+  - Successful timed releases add a speed bonus proportional to stored smash charge, with the ball max speed raised to `1600`.
+  - Goal score now scales strongly with ball speed, so fast smash rallies can create high-value goals.
+  - HUD now shows `SHOT` charge/ready state, and the paddle shows a red charge rail plus a ready flash.
+  - Exported `smashMode`, player smash fields, ball smash bonus fields, and `ball.lastGoalSpeedScore`.
+- Verified with Playwright:
+  - Holding `A` without releasing missed the incoming ball and gave the opponent a normal `+1.00` goal.
+  - Timed `A` release near collision produced a successful return at speed `929` with stored smash charge around `427` and speed bonus around `384`.
+  - A fast smash rally produced a high-value `+5.50` goal from speed scaling.
+  - Standard client run completed with no console error artifacts and showed `version:"v1.5.0"` with the new `SHOT` HUD.
+- Protected player-created smash speed from opponent goal scoring:
+  - Bumped the displayed game version to `v1.5.1`.
+  - Added `playerSmashSpeedBonus` tracking on the ball so the speed added by the player's `←/A` charge can be identified later.
+  - Opponent goal scoring now subtracts that player-created smash speed before calculating the speed-based goal bonus.
+  - Player goals still use the full ball speed, so a successful self-created fast attack can still earn the high-value goal.
+  - Exported `ball.playerSmashSpeedBonus` and `ball.lastGoalProtectedSpeed` via `render_game_to_text`.
+- Verified with Playwright:
+  - A charged smash produced ball speed `857` with protected player-created speed `403`.
+  - When the opponent scored after that sequence, the goal was limited to `+1.50` instead of receiving the full smash-speed bonus.
+  - Standard client run completed with no game console errors and showed `version:"v1.5.1"`.
+- Added drag-only play controls:
+  - Bumped the displayed game version to `v1.5.2`.
+  - Dragging up/down on the canvas now feeds the same release-mode movement inputs as keyboard up/down, so the paddle accelerates and stores held speed without buttons.
+  - Dragging left now feeds the same smash charge input as `←/A`; returning from the left pull or lifting the pointer releases the charge into the short hit window.
+  - Added a small drag guide line during play, updated the start-screen control text, and exported `dragControl` state via `render_game_to_text`.
+- Verified with Playwright:
+  - Dragging down started the game, set `dragControl.down:true`, moved the paddle to the lower side, and built `downCharge:1360`.
+  - Left-dragging while held set `dragControl.smash:true` and built smash charge `242`.
+  - Returning the drag from the left side set `smashMode.ready:true` with stored charge `298`.
+  - Standard client run completed with no game console errors and showed `version:"v1.5.2"`.
+- Added same-Wi-Fi LAN multiplayer:
+  - Bumped the displayed game version to `v1.6.0`.
+  - Added `server.js`, a dependency-free HTTP/WebSocket server that serves the game and assigns the first connected browser to `left` and the second to `right`.
+  - The left browser is the authoritative host; it runs the ball physics and broadcasts snapshots to the right browser.
+  - The right browser sends keyboard/drag input to the host, and the right paddle uses the same release-mode movement, smash charge, spin, and timing rules as the left paddle.
+  - Added `lan-info.json` so ordinary static serving stays solo without 404 console errors, while `server.js` overrides it with active LAN info.
+  - Added `package.json` with `npm start` mapped to `node server.js`.
+  - Added on-screen LAN status text such as `LAN LEFT / 対戦中`, `LAN RIGHT / 対戦中`, or solo status.
+  - Exported `network` state plus right-paddle charge/smash fields via `render_game_to_text`.
+- Verified with Playwright:
+  - Two browser pages connected to the LAN server: first page became `left` host and second page became `right` client.
+  - Pressing Space on the right client requested start from the host and both pages entered `playing`.
+  - Holding Down on the right client charged the host-side right paddle (`opponent.downCharge:319`).
+  - The right client received host ball snapshots and rendered the shared game state.
+  - Static solo smoke test completed with no game console error artifacts and showed `version:"v1.6.0"`.
 
 ## TODO
 
