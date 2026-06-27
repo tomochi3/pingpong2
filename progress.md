@@ -75,6 +75,43 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Deterministic rally showed ball speed `440 -> 450 -> 460` as rally count advanced `0 -> 1 -> 2`.
   - Point reset returned ball speed to `440`.
   - Standard game client run completed with no console error artifacts and showed `version:"v1.3.4"` in state.
+- Added visible ball speed to the HUD:
+  - Bumped the displayed game version to `v1.3.5`.
+  - HUD now shows both `PADDLE` speed and `BALL` speed, while preserving the `RELEASE` charge readout.
+  - Exported `ball.currentSpeed` via `render_game_to_text` for direct verification against the on-screen HUD.
+- Verified with Playwright:
+  - Gameplay screenshot showed `PADDLE 0`, `BALL 460`, and `RELEASE` together without overlap.
+  - Text state showed `version:"v1.3.5"` and `ball.currentSpeed:460`.
+  - Standard game client run completed with no console error artifacts.
+- Refined release mode charging:
+  - Bumped the displayed game version to `v1.3.6`.
+  - During release mode, holding up and down together now visibly shakes the paddle up and down while both `UP` and `DOWN` charges keep increasing.
+  - Releasing one direction applies the stored speed of the still-held opposite direction immediately, with no paddle speed cap.
+  - Exported `player.releaseShakePower`, `releaseMode.shakeActive`, and `releaseMode.shakePower` via `render_game_to_text`.
+- Verified with Playwright:
+  - Standard client run completed with no console error artifacts and showed `version:"v1.3.6"`.
+  - Dedicated release-mode check reached `rally:2`; holding up+down produced `shakeActive:true`, charges around `2480/2460`, and velocity oscillation from `-718` to `647`.
+  - Releasing down while holding up produced immediate upward velocity (`velocityY:-1618` to `-2820` depending on sample timing) before the paddle hit the top boundary.
+- Changed the match format to always-release five-point play:
+  - Bumped the displayed game version to `v1.3.7`.
+  - Changed the target score from `7` to `5`.
+  - Changed `RELEASE_RALLY_THRESHOLD` from `2` to `0`, so release mode is active from the menu/start state and the game only uses release-mode keyboard movement.
+  - Updated the menu copy and controls text to explain five-point play and release-mode controls.
+- Verified with Playwright:
+  - Standard client run completed with no console error artifacts and showed `version:"v1.3.7"`, `score.target:5`, `releaseMode.active:true`, and `releaseMode.threshold:0`.
+  - Dedicated start-state check confirmed release mode is active at `rally:0`.
+  - Holding up+down at `rally:0` produced `shakeActive:true`, charges around `2478/2460`, and velocity oscillation from `-723` to `647`.
+  - Releasing down while holding up produced immediate upward velocity `-2798`.
+  - Fast-forward gameover check ended at opponent `5.63`, confirming the five-point target triggers the end state.
+- Updated release-speed ownership and spin source:
+  - Bumped the displayed game version to `v1.3.8`.
+  - Releasing a movement button now immediately resets that direction's stored speed to `0` instead of decaying it.
+  - Added `releaseHeldVelocity` so spin can be calculated from the currently held release speed; player paddle hits use this held speed when it is stronger than the instantaneous paddle velocity.
+  - Exported `player.releaseHeldVelocity` and `releaseMode.heldVelocity` via `render_game_to_text`.
+- Verified with Playwright:
+  - Standard client run completed with no console error artifacts and showed `version:"v1.3.8"`.
+  - Direction release check showed both-held charges around `1320/1300`, then releasing down set `downCharge:0` and `heldVelocity:-1700`; releasing all keys set both charges and held velocity to `0`.
+  - Held-speed spin hit showed `upCharge:3040`, `downCharge:0`, `heldVelocity:-3040`, spin score `+1.60`, `curveStrength:1.21`, and a strong-spin audio cue.
 
 ## TODO
 

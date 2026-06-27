@@ -4,15 +4,17 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.3.4";
-  const SCORE_TO_WIN = 7;
+  const GAME_VERSION = "v1.3.8";
+  const SCORE_TO_WIN = 5;
   const PLAYER_MAX_SPEED = 900;
   const PLAYER_ACCEL = 1850;
   const PLAYER_BRAKE = 2300;
-  const RELEASE_RALLY_THRESHOLD = 2;
+  const RELEASE_RALLY_THRESHOLD = 0;
   const RELEASE_CHARGE_ACCEL = 2400;
-  const RELEASE_CHARGE_DECAY = 1800;
-  const RELEASE_NEUTRAL_BRAKE = 4200;
+  const RELEASE_SHAKE_BASE_SPEED = 280;
+  const RELEASE_SHAKE_SPEED_SCALE = 0.24;
+  const RELEASE_SHAKE_BASE_RATE = 42;
+  const RELEASE_SHAKE_RATE_SCALE = 0.38;
   const AI_MAX_SPEED = 780;
   const AI_ACCEL = 1500;
   const AI_BRAKE = 1900;
@@ -69,6 +71,9 @@
       vy: 0,
       upCharge: 0,
       downCharge: 0,
+      releaseShakePhase: 0,
+      releaseShakePower: 0,
+      releaseHeldVelocity: 0,
     },
     opponent: {
       x: FIELD_W - 66 - PADDLE_W,
@@ -112,6 +117,10 @@
     return Math.round(Math.abs(state.player.vy));
   }
 
+  function currentBallSpeed() {
+    return Math.round(state.ball.speed);
+  }
+
   function isReleaseMode() {
     return state.rally >= RELEASE_RALLY_THRESHOLD;
   }
@@ -119,6 +128,9 @@
   function resetReleaseCharges() {
     state.player.upCharge = 0;
     state.player.downCharge = 0;
+    state.player.releaseShakePhase = 0;
+    state.player.releaseShakePower = 0;
+    state.player.releaseHeldVelocity = 0;
   }
 
   function approach(value, target, amount) {
@@ -369,19 +381,29 @@
     );
   }
 
+  function spinVelocityForPaddle(paddle) {
+    if (paddle !== state.player) {
+      return paddle.vy;
+    }
+
+    const heldVelocity = state.player.releaseHeldVelocity;
+    return Math.abs(heldVelocity) > Math.abs(paddle.vy) ? heldVelocity : paddle.vy;
+  }
+
   function bounceFromPaddle(paddle, direction) {
     const ball = state.ball;
     const offset = clamp((ball.y - rectCenterY(paddle)) / (paddle.h / 2), -1, 1);
     const speed = Math.min(ball.speed + RALLY_BALL_SPEED_GAIN, BALL_MAX_SPEED);
     const angle = offset * 0.88;
     const side = direction > 0 ? "player" : "opponent";
-    const spinPower = clamp(paddle.vy / MAX_SPIN_PADDLE_SPEED, -1, 1);
+    const spinVelocity = spinVelocityForPaddle(paddle);
+    const spinPower = clamp(spinVelocity / MAX_SPIN_PADDLE_SPEED, -1, 1);
     const spinAmount = round2(Math.abs(spinPower) * SPIN_SCORE_MAX);
     const spinRatio = clamp(spinAmount / SPIN_SCORE_MAX, 0, 1);
 
     ball.speed = speed;
     ball.vx = Math.cos(angle) * speed * direction;
-    ball.vy = clamp(Math.sin(angle) * speed + paddle.vy * 0.16, -MAX_BALL_VY, MAX_BALL_VY);
+    ball.vy = clamp(Math.sin(angle) * speed + spinVelocity * 0.16, -MAX_BALL_VY, MAX_BALL_VY);
     ball.spin = clamp(spinPower * 1.35 + offset * 0.22, -1.65, 1.65);
     ball.curveStrength = clamp(spinRatio * 1.2 + Math.abs(offset) * 0.18, 0, 1.25);
     ball.arcDirection = Math.sign(ball.spin || spinPower || offset || 1);
@@ -407,25 +429,34 @@
     if (upPressed) {
       player.upCharge += RELEASE_CHARGE_ACCEL * dt;
     } else {
-      player.upCharge = approach(player.upCharge, 0, RELEASE_CHARGE_DECAY * dt);
+      player.upCharge = 0;
     }
 
     if (downPressed) {
       player.downCharge += RELEASE_CHARGE_ACCEL * dt;
     } else {
-      player.downCharge = approach(player.downCharge, 0, RELEASE_CHARGE_DECAY * dt);
+      player.downCharge = 0;
     }
 
+    player.releaseHeldVelocity = player.downCharge - player.upCharge;
+
     if (upPressed || downPressed) {
-      const netVelocity = (downPressed ? player.downCharge : 0) - (upPressed ? player.upCharge : 0);
       if (upPressed && downPressed) {
-        player.vy = approach(player.vy, netVelocity, RELEASE_NEUTRAL_BRAKE * dt);
+        const chargePower = (player.upCharge + player.downCharge) / 2;
+        const shakeRate = RELEASE_SHAKE_BASE_RATE + Math.sqrt(chargePower) * RELEASE_SHAKE_RATE_SCALE;
+        const shakeSpeed = RELEASE_SHAKE_BASE_SPEED + chargePower * RELEASE_SHAKE_SPEED_SCALE;
+        player.releaseShakePhase += shakeRate * dt;
+        player.releaseShakePower = chargePower;
+        player.vy = Math.sin(player.releaseShakePhase) * shakeSpeed;
       } else {
-        player.vy = netVelocity;
+        player.releaseShakePower = 0;
+        player.vy = downPressed ? player.downCharge : -player.upCharge;
       }
       return;
     }
 
+    player.releaseShakePower = 0;
+    player.releaseHeldVelocity = 0;
     player.vy = approach(player.vy, 0, PLAYER_BRAKE * dt);
   }
 
@@ -447,14 +478,14 @@
     if (upPressed) intent -= 1;
     if (downPressed) intent += 1;
 
-    if (pointerY !== null) {
+    if (pointerY !== null && !isReleaseMode()) {
       const target = pointerY - state.player.h / 2;
       const delta = target - state.player.y;
       intent = Math.abs(delta) > 8 ? Math.sign(delta) : 0;
       resetReleaseCharges();
     }
 
-    if (isReleaseMode() && pointerY === null) {
+    if (isReleaseMode()) {
       updateReleasePlayerVelocity(upPressed, downPressed, dt);
     } else {
       resetReleaseCharges();
@@ -470,7 +501,7 @@
 
     state.player.y += state.player.vy * dt;
 
-    if (pointerY !== null) {
+    if (pointerY !== null && !isReleaseMode()) {
       const target = pointerY - state.player.h / 2;
       if (Math.abs(target - state.player.y) < 7 && Math.abs(state.player.vy) < 220) {
         state.player.y = target;
@@ -621,6 +652,20 @@
   }
 
   function drawPaddle(paddle, color, shadow) {
+    const releaseShake = paddle === state.player ? state.player.releaseShakePower : 0;
+
+    if (releaseShake > 0) {
+      const alpha = clamp(0.12 + releaseShake / 5200, 0.12, 0.34);
+      const offset = clamp(7 + releaseShake / 420, 7, 18);
+
+      ctx.save();
+      ctx.fillStyle = `rgba(239, 92, 67, ${alpha})`;
+      drawRoundedRect(paddle.x - 3, paddle.y - offset, paddle.w + 6, paddle.h, 7);
+      ctx.fillStyle = `rgba(28, 132, 180, ${alpha})`;
+      drawRoundedRect(paddle.x - 3, paddle.y + offset, paddle.w + 6, paddle.h, 7);
+      ctx.restore();
+    }
+
     ctx.save();
     ctx.shadowColor = shadow;
     ctx.shadowBlur = 18;
@@ -736,7 +781,7 @@
 
     ctx.fillStyle = "#607580";
     ctx.font = "500 21px Inter, system-ui, sans-serif";
-    ctx.fillText("W/S・↑/↓・ドラッグで移動  長押し加速  P/Enterで一時停止", FIELD_W / 2, 478);
+    ctx.fillText("W/S・↑/↓で解放移動  同時押しでチャージ  P/Enterで一時停止", FIELD_W / 2, 478);
   }
 
   function drawPointNotice() {
@@ -755,7 +800,7 @@
 
   function drawHud() {
     const releaseActive = isReleaseMode();
-    const w = releaseActive ? 290 : 170;
+    const w = releaseActive ? 390 : 300;
     const h = releaseActive ? 68 : 46;
     const x = FIELD_W / 2 - w / 2;
     const y = FIELD_H - (releaseActive ? 104 : 82);
@@ -771,21 +816,29 @@
 
     ctx.fillStyle = "#607580";
     ctx.font = "700 13px Inter, system-ui, sans-serif";
-    ctx.fillText("SPEED", x + 16, y + 18);
+    ctx.fillText("PADDLE", x + 16, y + 18);
 
     ctx.fillStyle = "#1f2a33";
     ctx.font = "800 24px Inter, system-ui, sans-serif";
-    ctx.fillText(String(currentPlayerSpeed()), x + 73, y + 18);
+    ctx.fillText(String(currentPlayerSpeed()), x + 82, y + 18);
+
+    ctx.fillStyle = "#607580";
+    ctx.font = "700 13px Inter, system-ui, sans-serif";
+    ctx.fillText("BALL", x + 150, y + 18);
+
+    ctx.fillStyle = "#1f2a33";
+    ctx.font = "800 24px Inter, system-ui, sans-serif";
+    ctx.fillText(String(currentBallSpeed()), x + 196, y + 18);
 
     if (releaseActive) {
       ctx.fillStyle = "#ef5c43";
       ctx.font = "800 13px Inter, system-ui, sans-serif";
-      ctx.fillText("RELEASE", x + 168, y + 18);
+      ctx.fillText("RELEASE", x + 286, y + 18);
 
       ctx.fillStyle = "#607580";
       ctx.font = "700 13px Inter, system-ui, sans-serif";
       ctx.fillText(`UP ${Math.round(state.player.upCharge)}`, x + 16, y + 45);
-      ctx.fillText(`DOWN ${Math.round(state.player.downCharge)}`, x + 112, y + 45);
+      ctx.fillText(`DOWN ${Math.round(state.player.downCharge)}`, x + 142, y + 45);
     }
 
     ctx.restore();
@@ -815,7 +868,7 @@
     drawHud();
 
     if (state.mode === "menu") {
-      drawOverlay("PING PONG", "7.00点先取。速いパドルほど強い回転になります。", "クリック / Spaceで開始");
+      drawOverlay("PING PONG", "5.00点先取。最初から解放モードで勝負します。", "クリック / Spaceで開始");
     } else if (state.mode === "paused") {
       drawOverlay("PAUSE", "ラリーはここで止まっています。", "P / Enter / Spaceで再開");
     } else if (state.mode === "gameover") {
@@ -963,6 +1016,8 @@
         currentSpeed: currentPlayerSpeed(),
         upCharge: Math.round(state.player.upCharge),
         downCharge: Math.round(state.player.downCharge),
+        releaseShakePower: Math.round(state.player.releaseShakePower),
+        releaseHeldVelocity: Math.round(state.player.releaseHeldVelocity),
       },
       opponent: {
         x: Math.round(state.opponent.x),
@@ -978,6 +1033,7 @@
         velocityX: Math.round(state.ball.vx),
         velocityY: Math.round(state.ball.vy),
         speed: Math.round(state.ball.speed),
+        currentSpeed: currentBallSpeed(),
         baseSpeed: BALL_BASE_SPEED,
         rallySpeedGain: RALLY_BALL_SPEED_GAIN,
         maxSpeed: BALL_MAX_SPEED,
@@ -992,6 +1048,9 @@
         threshold: RELEASE_RALLY_THRESHOLD,
         upCharge: Math.round(state.player.upCharge),
         downCharge: Math.round(state.player.downCharge),
+        shakeActive: state.player.releaseShakePower > 0,
+        shakePower: Math.round(state.player.releaseShakePower),
+        heldVelocity: Math.round(state.player.releaseHeldVelocity),
       },
       lastPoint: state.lastPoint,
       lastPointAmount: round2(state.lastPointAmount),
