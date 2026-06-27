@@ -4,7 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.3.0";
+  const GAME_VERSION = "v1.3.1";
   const SCORE_TO_WIN = 7;
   const PLAYER_MAX_SPEED = 900;
   const PLAYER_ACCEL = 1850;
@@ -16,9 +16,12 @@
   const PADDLE_H = 116;
   const BALL_R = 11;
   const SPIN_SCORE_MAX = 1.6;
-  const SPIN_CURVE_ACCEL = 560;
-  const SPIN_DECAY = 0.88;
-  const MAX_BALL_VY = 660;
+  const SPIN_CURVE_ACCEL = 980;
+  const SPIN_WAVE_ACCEL = 720;
+  const SPIN_WAVE_FREQUENCY = 7.4;
+  const SPIN_DECAY = 0.42;
+  const SPIN_WAVE_DECAY = 0.34;
+  const MAX_BALL_VY = 760;
   const MAX_SPIN_PADDLE_SPEED = PLAYER_MAX_SPEED;
   const STRONG_SPIN_SOUND_THRESHOLD = 0.8;
   const keys = new Set();
@@ -76,6 +79,9 @@
       vy: 120,
       speed: 440,
       spin: 0,
+      curveStrength: 0,
+      curvePhase: 0,
+      trail: [],
     },
   };
 
@@ -260,6 +266,9 @@
     state.ball.vx = Math.cos(angle) * speed * direction;
     state.ball.vy = Math.sin(angle) * speed;
     state.ball.spin = 0;
+    state.ball.curveStrength = 0;
+    state.ball.curvePhase = 0;
+    state.ball.trail = [];
   }
 
   function resetPaddles() {
@@ -349,11 +358,15 @@
     const side = direction > 0 ? "player" : "opponent";
     const spinPower = clamp(paddle.vy / MAX_SPIN_PADDLE_SPEED, -1, 1);
     const spinAmount = round2(Math.abs(spinPower) * SPIN_SCORE_MAX);
+    const spinRatio = clamp(spinAmount / SPIN_SCORE_MAX, 0, 1);
 
     ball.speed = speed;
     ball.vx = Math.cos(angle) * speed * direction;
-    ball.vy = clamp(Math.sin(angle) * speed + paddle.vy * 0.12, -MAX_BALL_VY, MAX_BALL_VY);
-    ball.spin = clamp(spinPower + offset * 0.18, -1.25, 1.25);
+    ball.vy = clamp(Math.sin(angle) * speed + paddle.vy * 0.16, -MAX_BALL_VY, MAX_BALL_VY);
+    ball.spin = clamp(spinPower * 1.35 + offset * 0.22, -1.65, 1.65);
+    ball.curveStrength = clamp(spinRatio * 1.2 + Math.abs(offset) * 0.18, 0, 1.25);
+    ball.curvePhase = spinPower >= 0 ? 0 : Math.PI;
+    ball.trail = [{ x: ball.x, y: ball.y, strength: ball.curveStrength }];
     ball.x = direction > 0 ? paddle.x + paddle.w + ball.r : paddle.x - ball.r;
     state.rally += 1;
 
@@ -430,22 +443,36 @@
 
   function updateBall(dt) {
     const ball = state.ball;
+    const wave = Math.sin(ball.curvePhase) * ball.curveStrength * SPIN_WAVE_ACCEL;
+    const curve = ball.spin * SPIN_CURVE_ACCEL + wave;
 
-    ball.vy = clamp(ball.vy + ball.spin * SPIN_CURVE_ACCEL * dt, -MAX_BALL_VY, MAX_BALL_VY);
+    ball.vy = clamp(ball.vy + curve * dt, -MAX_BALL_VY, MAX_BALL_VY);
     ball.x += ball.vx * dt;
     ball.y += ball.vy * dt;
+    if (Math.abs(ball.spin) > 0.05 || ball.curveStrength > 0.08) {
+      ball.trail.push({ x: ball.x, y: ball.y, strength: clamp(ball.curveStrength, 0.15, 1.25) });
+      if (ball.trail.length > 16) {
+        ball.trail.shift();
+      }
+    } else if (ball.trail.length) {
+      ball.trail.shift();
+    }
     ball.spin = approach(ball.spin, 0, SPIN_DECAY * dt);
+    ball.curvePhase += (SPIN_WAVE_FREQUENCY + ball.curveStrength * 3.2) * dt;
+    ball.curveStrength = approach(ball.curveStrength, 0, SPIN_WAVE_DECAY * dt);
 
     if (ball.y - ball.r <= 32) {
       ball.y = 32 + ball.r;
       ball.vy = Math.abs(ball.vy);
       ball.spin *= 0.78;
+      ball.curveStrength *= 0.82;
     }
 
     if (ball.y + ball.r >= FIELD_H - 32) {
       ball.y = FIELD_H - 32 - ball.r;
       ball.vy = -Math.abs(ball.vy);
       ball.spin *= 0.78;
+      ball.curveStrength *= 0.82;
     }
 
     if (ball.vx < 0 && ballHitsPaddle(state.player)) {
@@ -548,9 +575,25 @@
     drawRoundedRect(paddle.x + 4, paddle.y + 10, 4, paddle.h - 20, 3);
   }
 
+  function drawBallTrail() {
+    const trail = state.ball.trail;
+    if (!trail.length) return;
+
+    trail.forEach((point, index) => {
+      const age = (index + 1) / trail.length;
+      const alpha = clamp(age * point.strength * 0.28, 0, 0.34);
+      const radius = BALL_R * (0.55 + age * 0.7);
+
+      ctx.fillStyle = `rgba(239, 92, 67, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
   function drawBall() {
     const ball = state.ball;
-    const spinAlpha = clamp(Math.abs(ball.spin), 0, 1);
+    const spinAlpha = clamp(Math.max(Math.abs(ball.spin) / 1.65, ball.curveStrength), 0, 1);
 
     if (spinAlpha > 0.03) {
       ctx.save();
@@ -690,6 +733,7 @@
     drawScore();
     drawPaddle(state.player, "#1c84b4", "rgba(28, 132, 180, 0.28)");
     drawPaddle(state.opponent, "#283742", "rgba(40, 55, 66, 0.24)");
+    drawBallTrail();
     drawBall();
     drawSpinNotice();
     drawPointNotice();
@@ -858,6 +902,8 @@
         velocityY: Math.round(state.ball.vy),
         speed: Math.round(state.ball.speed),
         spin: round2(state.ball.spin),
+        curveStrength: round2(state.ball.curveStrength),
+        trailPoints: state.ball.trail.length,
       },
       rally: state.rally,
       lastPoint: state.lastPoint,

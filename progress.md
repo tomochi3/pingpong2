@@ -38,6 +38,14 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - While holding `ArrowDown`, `currentSpeed` reached 417 in JSON and the HUD visibly showed a live speed value.
   - Version text appeared in the bottom-right corner.
   - Mobile viewport remained within 390px width.
+- Exaggerated spin curve behavior:
+  - Bumped the displayed game version to `v1.3.1`.
+  - Increased spin curve acceleration, slowed spin decay, and added a spin-proportional wave force so stronger spin produces a larger wobbling curve.
+  - Added a faint ball trail during spin so the curved trajectory is easier to see.
+  - Exported `ball.curveStrength` and `ball.trailPoints` via `render_game_to_text`.
+- Verified with Playwright:
+  - Strong spin scenario with `+0.82` spin score kept `curveStrength` around `0.70 -> 0.42`, maintained 16 trail points, and flipped vertical velocity from positive to negative over the sampled path.
+  - Standard game client run completed with no console error artifacts and showed `version:"v1.3.1"` in state.
 
 ## TODO
 
