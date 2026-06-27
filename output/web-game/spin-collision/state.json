@@ -1,0 +1,90 @@
+{
+  "collisionState": {
+    "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+    "mode": "playing",
+    "score": {
+      "player": 0.66,
+      "opponent": 0,
+      "playerDisplay": "0.66",
+      "opponentDisplay": "0.00",
+      "target": 7
+    },
+    "player": {
+      "x": 66,
+      "y": 372,
+      "width": 20,
+      "height": 116,
+      "velocityY": 493
+    },
+    "opponent": {
+      "x": 1194,
+      "y": 298,
+      "width": 20,
+      "height": 116,
+      "velocityY": -100
+    },
+    "ball": {
+      "x": 122,
+      "y": 346,
+      "radius": 11,
+      "velocityX": 381,
+      "velocityY": -211,
+      "speed": 464,
+      "spin": 0.23
+    },
+    "rally": 1,
+    "lastPoint": "player",
+    "lastPointAmount": 0.66,
+    "lastScoreReason": "spin",
+    "spinNotice": {
+      "active": true,
+      "side": "player",
+      "amount": 0.66
+    },
+    "winner": null
+  },
+  "curvedState": {
+    "coordinateSystem": "origin top-left, x right, y down, logical canvas 1280x720",
+    "mode": "playing",
+    "score": {
+      "player": 0.66,
+      "opponent": 0,
+      "playerDisplay": "0.66",
+      "opponentDisplay": "0.00",
+      "target": 7
+    },
+    "player": {
+      "x": 66,
+      "y": 421,
+      "width": 20,
+      "height": 116,
+      "velocityY": 0
+    },
+    "opponent": {
+      "x": 1194,
+      "y": 218,
+      "width": 20,
+      "height": 116,
+      "velocityY": -387
+    },
+    "ball": {
+      "x": 224,
+      "y": 293,
+      "radius": 11,
+      "velocityX": 381,
+      "velocityY": -193,
+      "speed": 464,
+      "spin": 0
+    },
+    "rally": 1,
+    "lastPoint": "player",
+    "lastPointAmount": 0.66,
+    "lastScoreReason": "spin",
+    "spinNotice": {
+      "active": true,
+      "side": "player",
+      "amount": 0.66
+    },
+    "winner": null
+  }
+}
