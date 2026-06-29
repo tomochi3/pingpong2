@@ -4,7 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.8.0";
+  const GAME_VERSION = "v1.8.1";
   const GOALS_TO_END = 5;
   const TUTORIAL_DURATION = 4.2;
   const PLAYER_MAX_SPEED = 900;
@@ -47,6 +47,7 @@
   let rafId = 0;
   let dpr = 1;
   let pointerY = null;
+  let cursorY = null;
   let dragControl = {
     active: false,
     pointerId: null,
@@ -83,6 +84,7 @@
     winner: null,
     localTwoPlayer: false,
     easyMode: true,
+    cursorControlMode: false,
     trainingMode: "normal",
     rally: 0,
     goals: {
@@ -213,7 +215,11 @@
   }
 
   function isEasyModePaddle(paddle) {
-    return state.easyMode && paddle === state.player;
+    return state.easyMode && !state.cursorControlMode && paddle === state.player;
+  }
+
+  function isCursorModePaddle(paddle) {
+    return state.cursorControlMode && paddle === state.player && cursorY !== null;
   }
 
   function isTrainingOpponent() {
@@ -971,6 +977,11 @@
     paddle.y = state.ball.y - paddle.h / 2;
   }
 
+  function syncCursorPaddle(paddle) {
+    if (!isCursorModePaddle(paddle) || (state.mode !== "playing" && state.mode !== "point")) return;
+    paddle.y = cursorY - paddle.h / 2;
+  }
+
   function updateHumanPaddle(paddle, input, dt) {
     let intent = 0;
     if (input.up) intent -= 1;
@@ -1008,6 +1019,7 @@
     }
 
     keepPaddleInBounds(paddle);
+    syncCursorPaddle(paddle);
     syncEasyPaddleToBall(paddle);
   }
 
@@ -1084,6 +1096,7 @@
       ball.curveStrength *= 0.82;
     }
 
+    syncCursorPaddle(state.player);
     syncEasyPaddleToBall(state.player);
     if (isTrainingOpponent()) {
       state.opponent.y = ball.y - state.opponent.h / 2;
@@ -1404,9 +1417,11 @@
     ctx.fillText("Space/クリックで1人プレイ  2キーで同じPCの2人対戦", FIELD_W / 2, 510);
     ctx.fillStyle = state.easyMode ? "#1c84b4" : "#607580";
     ctx.font = "800 18px Inter, system-ui, sans-serif";
-    ctx.fillText(`E: 簡単モード ${state.easyMode ? "ON" : "OFF"}（初期ON）`, FIELD_W / 2, 542);
+    ctx.fillText(`E: 簡単モード ${state.easyMode ? "ON" : "OFF"}（初期ON）`, FIELD_W / 2, 534);
     ctx.fillStyle = state.trainingMode === "hard" ? "#ef5c43" : state.trainingMode === "training" ? "#1c84b4" : "#607580";
-    ctx.fillText(`T: ${trainingModeLabel()} / H: ハード`, FIELD_W / 2, 572);
+    ctx.fillText(`T: ${trainingModeLabel()} / H: ハード`, FIELD_W / 2, 560);
+    ctx.fillStyle = state.cursorControlMode ? "#1c84b4" : "#607580";
+    ctx.fillText(`C: カーソル追従 ${state.cursorControlMode ? "ON" : "OFF"}`, FIELD_W / 2, 586);
   }
 
   function drawPointNotice() {
@@ -1561,6 +1576,9 @@
     if (state.easyMode) {
       label += " / 簡単ON";
     }
+    if (state.cursorControlMode) {
+      label += " / カーソルON";
+    }
     if (state.trainingMode !== "normal") {
       label += ` / ${trainingModeLabel()}`;
     }
@@ -1667,6 +1685,7 @@
 
   function startDragControl(event) {
     const point = canvasPoint(event);
+    cursorY = point.y;
     pointerY = point.y;
     dragControl = {
       active: true,
@@ -1686,6 +1705,7 @@
     const previousMoveIntent = dragControl.moveIntent;
     const side = localInputSide();
     const point = canvasPoint(event);
+    cursorY = point.y;
     pointerY = point.y;
     dragControl.x = point.x;
     dragControl.y = point.y;
@@ -1703,6 +1723,11 @@
     if (wasSmashPressed && !isSmashPressed()) {
       armSmashRelease();
     }
+  }
+
+  function updateCursorPosition(event) {
+    const point = canvasPoint(event);
+    cursorY = point.y;
   }
 
   function endDragControl(event) {
@@ -1811,6 +1836,7 @@
       lastScoreReason: state.lastScoreReason,
       winner: state.winner,
       easyMode: state.easyMode,
+      cursorControlMode: state.cursorControlMode,
       trainingMode: state.trainingMode,
       rally: state.rally,
       goals: { ...state.goals },
@@ -1832,6 +1858,7 @@
     state.lastScoreReason = snapshot.lastScoreReason;
     state.winner = snapshot.winner;
     state.easyMode = Boolean(snapshot.easyMode);
+    state.cursorControlMode = Boolean(snapshot.cursorControlMode);
     state.trainingMode = snapshot.trainingMode || "normal";
     state.rally = snapshot.rally;
     state.goals = { ...snapshot.goals };
@@ -1947,6 +1974,7 @@
 
   canvas.addEventListener("pointermove", (event) => {
     event.preventDefault();
+    updateCursorPosition(event);
     updateDragControl(event);
   });
 
@@ -1982,6 +2010,9 @@
     } else if (event.code === "KeyE") {
       event.preventDefault();
       state.easyMode = !state.easyMode;
+    } else if (event.code === "KeyC") {
+      event.preventDefault();
+      state.cursorControlMode = !state.cursorControlMode;
     } else if (event.code === "KeyT") {
       event.preventDefault();
       cycleTrainingMode();
@@ -2068,6 +2099,13 @@
         assistedSide: state.easyMode ? "left" : null,
         playerAlignedToBall: state.easyMode
           ? Math.round(rectCenterY(state.player)) === Math.round(state.ball.y)
+          : false,
+      },
+      cursorControlMode: {
+        active: state.cursorControlMode,
+        cursorY: cursorY === null ? null : Math.round(cursorY),
+        playerAlignedToCursor: state.cursorControlMode && cursorY !== null
+          ? Math.round(rectCenterY(state.player)) === Math.round(cursorY)
           : false,
       },
       trainingMode: {

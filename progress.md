@@ -328,6 +328,20 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Hard training returned the ball with `rally:1`, `goals.total:0`, faster speed (`715` vs `545`), `lastSpinVelocity:760`, and `curveStrength:1.87`.
   - Standard web-game smoke test completed with no game console error artifacts and showed `version:"v1.8.0"`.
   - Visual checks confirmed the menu mode selector and hard training spin trail/score display.
+- Added cursor-follow movement mode:
+  - Bumped the displayed game version to `v1.8.1`.
+  - Added `C` as a cursor-follow toggle.
+  - Added independent cursor tracking so the player's paddle center follows the cursor y-position exactly without requiring mouse/touch drag.
+  - Cursor-follow mode takes priority over easy-mode ball tracking, while smash charge, release charge, drag charge, and other inputs keep working.
+  - Added cursor mode status to the menu, lower-left mode label, and `render_game_to_text`.
+  - Updated `readme.md` with the new cursor-follow controls.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Cursor mode toggled ON from the menu and reported `version:"v1.8.1"`.
+  - Moving the cursor to y `500`, then y `220`, aligned the player's paddle center exactly to `500` and `220`.
+  - Holding `S` and `A` while cursor-follow was active kept the paddle center at the cursor y-position while still building `downCharge`, `smashCharge`, and `smashStoredSpinVelocity`.
+  - Standard web-game smoke test completed with no game console error artifacts.
+  - Visual checks confirmed the cursor-follow gameplay status and menu selector layout.
 
 ## TODO
 
