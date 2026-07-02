@@ -342,6 +342,16 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Holding `S` and `A` while cursor-follow was active kept the paddle center at the cursor y-position while still building `downCharge`, `smashCharge`, and `smashStoredSpinVelocity`.
   - Standard web-game smoke test completed with no game console error artifacts.
   - Visual checks confirmed the cursor-follow gameplay status and menu selector layout.
+- Added center-hit visual feedback:
+  - Bumped the displayed game version to `v1.8.2`.
+  - Added a short "芯ヒット" burst effect when a paddle return lands very close to the paddle center.
+  - The effect uses the same center-hit factor as the return-speed bonus, and it shows the center-speed bonus value next to the impact point.
+  - Synced the effect through LAN snapshots and exported it via `render_game_to_text`.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed with the bundled Node runtime.
+  - Deterministic center return produced `lastCenterHitFactor:1`, `lastCenterHitSpeedBonus:95`, and an active center-hit effect with `speedBonus:95`.
+  - Standard web-game smoke test completed with no game console error artifacts.
+  - Visual check confirmed the "芯ヒット" burst and bonus text render at the impact point.
 
 ## TODO
 

@@ -4,7 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.8.1";
+  const GAME_VERSION = "v1.8.2";
   const GOALS_TO_END = 5;
   const TUTORIAL_DURATION = 4.2;
   const PLAYER_MAX_SPEED = 900;
@@ -25,6 +25,8 @@
   const BALL_BASE_SPEED = 440;
   const RALLY_BALL_SPEED_GAIN = 10;
   const CENTER_HIT_SPEED_BONUS = 95;
+  const CENTER_HIT_EFFECT_THRESHOLD = 0.86;
+  const CENTER_HIT_EFFECT_DURATION = 0.78;
   const SMASH_CHARGE_ACCEL = 420;
   const SMASH_SPEED_BONUS_SCALE = 0.9;
   const SMASH_RELEASE_WINDOW = 0.2;
@@ -102,6 +104,15 @@
       side: null,
       x: FIELD_W / 2,
       y: FIELD_H / 2,
+    },
+    centerHitEffect: {
+      timer: 0,
+      duration: CENTER_HIT_EFFECT_DURATION,
+      side: null,
+      x: FIELD_W / 2,
+      y: FIELD_H / 2,
+      factor: 0,
+      speedBonus: 0,
     },
     audio: {
       available: false,
@@ -599,6 +610,7 @@
     state.lastScoreReason = null;
     state.rally = 0;
     state.spinNotice.timer = 0;
+    state.centerHitEffect.timer = 0;
     state.ball.lastGoalProtectedSpeed = 0;
     state.ball.lastGoalSpeedScore = 1;
     resetReleaseCharges();
@@ -623,6 +635,7 @@
     state.ball.playerSmashSpeedBonus = 0;
     state.ball.opponentSmashSpeedBonus = 0;
     state.ball.trail = [];
+    state.centerHitEffect.timer = 0;
   }
 
   function resetPaddles() {
@@ -745,6 +758,20 @@
     };
 
     return false;
+  }
+
+  function triggerCenterHitEffect(side, x, y, factor, speedBonus) {
+    if (factor < CENTER_HIT_EFFECT_THRESHOLD) return;
+
+    state.centerHitEffect = {
+      timer: CENTER_HIT_EFFECT_DURATION,
+      duration: CENTER_HIT_EFFECT_DURATION,
+      side,
+      x,
+      y: clamp(y, 78, FIELD_H - 78),
+      factor,
+      speedBonus,
+    };
   }
 
   function rectCenterY(rect) {
@@ -896,6 +923,7 @@
     paddle.smashReadyTimer = 0;
     paddle.smashReleaseSpinVelocity = 0;
     paddle.smashLastSpeedBonus = appliedSmashSpeedBonus;
+    triggerCenterHitEffect(side, ball.x, ball.y, centerFactor, centerSpeedBonus);
     state.rally += 1;
 
     showTutorial(
@@ -1133,6 +1161,9 @@
     if (state.spinNotice.timer > 0) {
       state.spinNotice.timer = Math.max(0, state.spinNotice.timer - step);
     }
+    if (state.centerHitEffect.timer > 0) {
+      state.centerHitEffect.timer = Math.max(0, state.centerHitEffect.timer - step);
+    }
     updateTutorials(step);
     syncNetworkInput();
 
@@ -1358,6 +1389,61 @@
     ctx.beginPath();
     ctx.arc(dragControl.x, dragControl.y, 12, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCenterHitEffect() {
+    const effect = state.centerHitEffect;
+    if (effect.timer <= 0) return;
+
+    const life = effect.duration || CENTER_HIT_EFFECT_DURATION;
+    const alpha = clamp(effect.timer / life, 0, 1);
+    const progress = 1 - alpha;
+    const intensity = clamp(effect.factor, CENTER_HIT_EFFECT_THRESHOLD, 1);
+    const ringSize = 28 + progress * 82 + intensity * 18;
+    const textY = -46 - progress * 18;
+    const burstCount = 12;
+
+    ctx.save();
+    ctx.translate(effect.x, effect.y);
+    ctx.globalAlpha = alpha;
+
+    ctx.strokeStyle = "#f4b33d";
+    ctx.lineWidth = 5 + (1 - progress) * 8 * intensity;
+    ctx.beginPath();
+    ctx.arc(0, 0, ringSize, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.86)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, ringSize * 0.55, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#f4b33d";
+    ctx.lineWidth = 3;
+    for (let i = 0; i < burstCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / burstCount + progress * 0.32;
+      const inner = 10 + progress * 16;
+      const outer = inner + 22 + intensity * 24 + progress * 20;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+      ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+      ctx.stroke();
+    }
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "900 28px Inter, system-ui, sans-serif";
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = "rgba(249, 252, 253, 0.9)";
+    ctx.fillStyle = "#1f2a33";
+    ctx.strokeText("芯ヒット", 0, textY);
+    ctx.fillText("芯ヒット", 0, textY);
+
+    ctx.font = "900 18px Inter, system-ui, sans-serif";
+    ctx.fillStyle = effect.side === "player" ? "#1c84b4" : "#ef5c43";
+    ctx.fillText(`+${Math.round(effect.speedBonus)}`, 0, textY + 28);
     ctx.restore();
   }
 
@@ -1601,6 +1687,7 @@
     drawPaddle(state.opponent, "#283742", "rgba(40, 55, 66, 0.24)");
     drawBallTrail();
     drawBall();
+    drawCenterHitEffect();
     drawDragGuide();
     drawSpinNotice();
     drawPointNotice();
@@ -1847,6 +1934,7 @@
         trail: state.ball.trail.slice(-32),
       },
       spinNotice: { ...state.spinNotice },
+      centerHitEffect: { ...state.centerHitEffect },
     };
   }
 
@@ -1869,6 +1957,9 @@
       trail: Array.isArray(snapshot.ball.trail) ? snapshot.ball.trail : [],
     };
     state.spinNotice = { ...snapshot.spinNotice };
+    state.centerHitEffect = snapshot.centerHitEffect
+      ? { ...snapshot.centerHitEffect }
+      : { ...state.centerHitEffect, timer: 0 };
   }
 
   function syncNetworkSnapshot() {
@@ -2176,6 +2267,7 @@
         baseSpeed: BALL_BASE_SPEED,
         rallySpeedGain: RALLY_BALL_SPEED_GAIN,
         centerHitMaxSpeedBonus: CENTER_HIT_SPEED_BONUS,
+        centerHitEffectThreshold: CENTER_HIT_EFFECT_THRESHOLD,
         lastCenterHitFactor: round2(state.ball.lastCenterHitFactor),
         lastCenterHitSpeedBonus: Math.round(state.ball.lastCenterHitSpeedBonus),
         smashChargeAccel: SMASH_CHARGE_ACCEL,
@@ -2252,6 +2344,13 @@
         active: state.spinNotice.timer > 0,
         side: state.spinNotice.side,
         amount: round2(state.spinNotice.amount),
+      },
+      centerHitEffect: {
+        active: state.centerHitEffect.timer > 0,
+        side: state.centerHitEffect.side,
+        factor: round2(state.centerHitEffect.factor),
+        speedBonus: Math.round(state.centerHitEffect.speedBonus),
+        timer: round2(state.centerHitEffect.timer),
       },
       audio: {
         available: state.audio.available,
