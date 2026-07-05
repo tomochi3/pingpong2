@@ -352,6 +352,67 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Deterministic center return produced `lastCenterHitFactor:1`, `lastCenterHitSpeedBonus:95`, and an active center-hit effect with `speedBonus:95`.
   - Standard web-game smoke test completed with no game console error artifacts.
   - Visual check confirmed the "芯ヒット" burst and bonus text render at the impact point.
+- Added explicit two-device LAN sync duel mode:
+  - Bumped the displayed game version to `v1.8.3`.
+  - Added `state.lanDuelActive`, `playMode:"lan-lobby"` before start, and `playMode:"lan-duel"` after a LAN match starts.
+  - Added `3` as an explicit LAN sync duel start key; `Space` also starts LAN duel when a LAN server connection is active.
+  - Right-side clients now send `start-lan-duel` / `restart-lan-duel` controls to the left host, and the host starts the synchronized match.
+  - LAN duel start requires two player clients and turns easy mode off for fair left/right play.
+  - LAN HUD/status/menu text now clearly labels `LAN LEFT`, `LAN RIGHT`, waiting state, and synchronized duel state.
+  - Menu HUD rendering is suppressed so the LAN instructions do not overlap the lower HUD panel.
+  - Host state changes now force an immediate LAN snapshot, fixing a paused-state sync gap where the right client could briefly remain in `playing`.
+  - README now documents the `3`/`Space` LAN sync duel start flow.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Standard web-game client run showed the LAN lobby menu without text/HUD overlap.
+  - Two-page LAN test assigned the first page to `left` host and the second page to `right` client, both with `playMode:"lan-lobby"` and `canStartLanDuel:true`.
+  - Pressing `3` on the right client started both pages in `playMode:"lan-duel"`, `mode:"playing"`, with easy mode off.
+  - Pressing `Enter` on the right client paused both pages, and pressing `Space` resumed both pages.
+  - Holding `ArrowDown` on the right client moved the host-side right paddle, and both pages reported matching ball/right-paddle state.
+  - Visual checks confirmed `LAN LEFT / 同期対戦中` and `LAN RIGHT / 同期対戦中` render correctly.
+- Added mobile layout and touch polish:
+  - Bumped the displayed game version to `v1.8.4`.
+  - Updated viewport/CSS to use dynamic viewport height, suppress page scroll/overscroll, prevent tap highlight/selection, and size the 16:9 game shell to fit phone landscape height.
+  - Added touch-specific menu copy: tap starts the game/LAN duel, vertical drag moves, and left drag charges the shot.
+  - Enlarged and simplified the menu text for portrait touch devices so it remains legible even when the 16:9 canvas is small.
+  - Prevented the canvas context menu on long press.
+  - Exported `viewport` details from `render_game_to_text` for mobile QA.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Standard web-game client run completed and reported `version:"v1.8.4"`.
+  - Mobile portrait 390x844 rendered a full-width canvas (`378x213` CSS px), showed the touch-specific compact menu, and drag-started `mode:"playing"` with `dragControl.down:true`.
+  - Mobile landscape 844x390 rendered a height-fitted canvas (`636x358` CSS px), showed the touch menu, and drag-started `mode:"playing"` with `dragControl.down:true`.
+  - Visual checks confirmed the landscape play view is usable and portrait menu text no longer overlaps.
+- Added true portrait phone board orientation:
+  - Bumped the displayed game version to `v1.8.5`.
+  - On touch portrait screens, the canvas now switches to a `720x1280` display surface and a `9:16` aspect ratio.
+  - The board is rotated per client so the local player is always at the bottom and the opponent is always at the top; LAN right-side clients use the opposite rotation from left-side clients.
+  - Touch coordinate mapping now converts portrait display coordinates back into the existing logical game coordinates, preserving the old physics/collision/network model.
+  - Portrait movement uses left/right drag, while pulling downward charges the smash shot; landscape/mobile and desktop controls remain unchanged.
+  - Added portrait-readable score, HUD, point notice, menu, status, and version placement instead of rotating text with the board.
+  - README now documents the portrait phone controls and top/bottom layout.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Solo portrait mobile 390x844 reported `displayWidth:720`, `displayHeight:1280`, `portraitBoard:true`, and `bottomSide:"left"`.
+  - Portrait menu screenshot showed enemy score/paddle at top, player score/paddle at bottom, with readable menu text.
+  - Portrait right-drag started play and moved the bottom player paddle horizontally; downward pull produced `dragControl.smash:true` and built smash charge.
+  - Two-page LAN portrait test assigned the first page `bottomSide:"left"` and the second page `bottomSide:"right"`, so both clients see themselves at the bottom.
+  - Pressing/tapping the right portrait client started `playMode:"lan-duel"` and right-client horizontal drag controlled the bottom paddle.
+  - Standard web-game client run still completed and showed `version:"v1.8.5"` in the normal landscape menu.
+- Added host-PC LAN waiting selection:
+  - Bumped the displayed game version to `v1.8.6`.
+  - Added `state.lanDuelArmed` and `playMode:"lan-waiting"` so the host PC can select smartphone LAN duel before the phone connects.
+  - Pressing `3`, `Space`, or clicking/tapping on the host while alone now arms LAN waiting instead of starting solo.
+  - When a second player joins and the host is armed in the menu, the host automatically starts `playMode:"lan-duel"`.
+  - Menu/status text now says `スマホ接続待ち` while armed, and desktop menu copy says `スマホ待ちLAN`.
+  - README LAN steps now describe: host PC selects LAN waiting first, then the smartphone opens the LAN URL.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - One-page host test started in `playMode:"lan-lobby"`, `side:"left"`, `playerCount:1`.
+  - Pressing `3` on the host changed it to `playMode:"lan-waiting"` with `lanDuelArmed:true`.
+  - Opening a phone-sized second page auto-started both pages in `playMode:"lan-duel"`, with host `side:"left"` and phone `side:"right"`.
+  - Phone portrait still reported `bottomSide:"right"` so the phone player remains at the bottom.
+  - Standard web-game client run completed and showed `version:"v1.8.6"`.
 
 ## TODO
 

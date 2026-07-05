@@ -4,7 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.8.2";
+  const GAME_VERSION = "v1.8.6";
   const GOALS_TO_END = 5;
   const TUTORIAL_DURATION = 4.2;
   const PLAYER_MAX_SPEED = 900;
@@ -85,6 +85,8 @@
     lastScoreReason: null,
     winner: null,
     localTwoPlayer: false,
+    lanDuelArmed: false,
+    lanDuelActive: false,
     easyMode: true,
     cursorControlMode: false,
     trainingMode: "normal",
@@ -209,6 +211,41 @@
     return Math.round(state.ball.speed);
   }
 
+  function isTouchDevice() {
+    return window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  }
+
+  function isMobilePortraitView() {
+    return isTouchDevice() && window.innerHeight > window.innerWidth;
+  }
+
+  function portraitBottomSide() {
+    return network.side === "right" ? "right" : "left";
+  }
+
+  function displaySize() {
+    return isMobilePortraitView()
+      ? { width: FIELD_H, height: FIELD_W }
+      : { width: FIELD_W, height: FIELD_H };
+  }
+
+  function viewportInfo() {
+    const rect = canvas.getBoundingClientRect();
+    const display = displaySize();
+    return {
+      width: Math.round(window.innerWidth),
+      height: Math.round(window.innerHeight),
+      canvasCssWidth: Math.round(rect.width),
+      canvasCssHeight: Math.round(rect.height),
+      displayWidth: display.width,
+      displayHeight: display.height,
+      coarsePointer: isTouchDevice(),
+      orientation: window.innerWidth >= window.innerHeight ? "landscape" : "portrait",
+      portraitBoard: isMobilePortraitView(),
+      bottomSide: isMobilePortraitView() ? portraitBottomSide() : null,
+    };
+  }
+
   function isReleaseMode() {
     return state.rally >= RELEASE_RALLY_THRESHOLD;
   }
@@ -219,6 +256,23 @@
 
   function isNetworkHost() {
     return isNetworkGame() && network.host;
+  }
+
+  function networkPlayerCount() {
+    return network.clients.filter((client) => client.side === "left" || client.side === "right").length;
+  }
+
+  function hasNetworkRightPlayer() {
+    return network.clients.some((client) => client.side === "right");
+  }
+
+  function canStartLanDuel() {
+    return isNetworkGame() && network.side !== "spectator" && networkPlayerCount() >= 2;
+  }
+
+  function maybeAutoStartArmedLanDuel() {
+    if (!network.host || !state.lanDuelArmed || state.mode !== "menu" || !canStartLanDuel()) return;
+    startLanDuelGame();
   }
 
   function isLocalTwoPlayer() {
@@ -258,7 +312,7 @@
   }
 
   function hasHumanRightPlayer() {
-    return isLocalTwoPlayer() || (isNetworkHost() && network.clients.some((client) => client.side === "right"));
+    return isLocalTwoPlayer() || (isNetworkHost() && state.lanDuelActive && hasNetworkRightPlayer());
   }
 
   function sideToPaddle(side) {
@@ -310,13 +364,17 @@
     const dy = dragControl.y - dragControl.startY;
     const up = dy < -DRAG_MOVE_DEADZONE;
     const down = dy > DRAG_MOVE_DEADZONE;
+    const portraitRightCharge = isMobilePortraitView() && portraitBottomSide() === "right";
+    const smash = portraitRightCharge
+      ? dx > DRAG_SMASH_DEADZONE
+      : dx < -DRAG_SMASH_DEADZONE;
 
     return {
       dx,
       dy,
       up,
       down,
-      smash: dx < -DRAG_SMASH_DEADZONE,
+      smash,
       moveIntent: up ? -1 : down ? 1 : 0,
     };
   }
@@ -650,6 +708,8 @@
 
   function startGame(options = {}) {
     state.localTwoPlayer = Boolean(options.localTwoPlayer);
+    state.lanDuelActive = Boolean(options.lanDuel) && isNetworkGame();
+    state.lanDuelArmed = false;
     if (Object.prototype.hasOwnProperty.call(options, "easyMode")) {
       state.easyMode = Boolean(options.easyMode);
     }
@@ -657,6 +717,29 @@
     resetPaddles();
     resetBall(randSign());
     state.mode = "playing";
+    forceNetworkSnapshot();
+  }
+
+  function startLanDuelGame() {
+    resumeAudio();
+    if (!isNetworkGame()) {
+      network.lastError = "LAN server unavailable";
+      return;
+    }
+    if (network.side === "spectator") {
+      return;
+    }
+    if (!network.host) {
+      sendNetworkControl("start-lan-duel");
+      return;
+    }
+    if (!canStartLanDuel()) {
+      state.lanDuelActive = false;
+      state.lanDuelArmed = true;
+      state.mode = "menu";
+      return;
+    }
+    startGame({ localTwoPlayer: false, lanDuel: true, easyMode: false });
   }
 
   function startLocalTwoPlayerGame() {
@@ -1247,6 +1330,35 @@
     ctx.fillText(formatScore(state.opponent.score), FIELD_W / 2 + 190, 104);
   }
 
+  function scoreForSide(side) {
+    return side === "right" ? state.opponent.score : state.player.score;
+  }
+
+  function scoreSideLabel(side) {
+    return side === portraitBottomSide() ? "YOU" : "RIVAL";
+  }
+
+  function drawPortraitScore() {
+    const display = displaySize();
+    const bottomSide = portraitBottomSide();
+    const topSide = bottomSide === "right" ? "left" : "right";
+
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = "rgba(31, 42, 51, 0.13)";
+    ctx.font = "800 68px Inter, system-ui, sans-serif";
+    ctx.fillText(formatScore(scoreForSide(topSide)), display.width / 2, 96);
+    ctx.fillText(formatScore(scoreForSide(bottomSide)), display.width / 2, display.height - 96);
+
+    ctx.fillStyle = "rgba(31, 42, 51, 0.44)";
+    ctx.font = "800 16px Inter, system-ui, sans-serif";
+    ctx.fillText(scoreSideLabel(topSide), display.width / 2, 142);
+    ctx.fillText(scoreSideLabel(bottomSide), display.width / 2, display.height - 142);
+    ctx.restore();
+  }
+
   function drawPaddle(paddle, color, shadow) {
     const releaseShake = paddle.releaseShakePower || 0;
     const smashCharge = paddle.smashCharge || 0;
@@ -1468,60 +1580,111 @@
     ctx.restore();
   }
 
-  function drawButtonHint(text, x, y, w) {
+  function drawButtonHint(text, x, y, w, options = {}) {
+    const h = options.height || 48;
+    const fontSize = options.fontSize || 22;
     ctx.fillStyle = "rgba(31, 42, 51, 0.08)";
-    drawRoundedRect(x - w / 2, y - 24, w, 48, 8);
+    drawRoundedRect(x - w / 2, y - h / 2, w, h, 8);
     ctx.strokeStyle = "rgba(31, 42, 51, 0.16)";
     ctx.lineWidth = 2;
-    ctx.strokeRect(x - w / 2 + 1, y - 23, w - 2, 46);
+    ctx.strokeRect(x - w / 2 + 1, y - h / 2 + 1, w - 2, h - 2);
     ctx.fillStyle = "#24323b";
-    ctx.font = "700 22px Inter, system-ui, sans-serif";
+    ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, x, y + 1);
   }
 
   function drawOverlay(title, subtitle, actionText) {
+    const touch = isTouchDevice();
+    const compactTouch = touch && viewportInfo().orientation === "portrait";
+    const display = displaySize();
+    const overlayW = display.width;
+    const overlayH = display.height;
+    const centerX = overlayW / 2;
+    const displaySubtitle = compactTouch
+      ? (isNetworkGame() ? "敵は上、自分は下。LAN対戦" : "敵は上、自分は下。5ゴールで終了")
+      : subtitle;
+    const menuLines = isNetworkGame()
+      ? touch
+        ? [
+            "LAN: 先に開いた端末がLEFT、次の端末がRIGHT",
+            `現在: ${network.side.toUpperCase()} / ${network.playerCount}人接続`,
+            state.lanDuelArmed ? "スマホ接続待ち。入ると自動開始" : "タップでスマホ待ちLAN対戦を選択",
+            compactTouch ? "左右ドラッグで移動、下へ引いて溜めショット" : "上下ドラッグで移動、左ドラッグで溜めショット",
+          ]
+        : [
+            "LAN: 先に開いた端末がLEFT、次の端末がRIGHT",
+            `現在: ${network.side.toUpperCase()} / ${network.playerCount}人接続`,
+            state.lanDuelArmed ? "スマホ接続待ち。入ると自動開始" : "Space/3: スマホ待ちLAN対戦  1: 1人プレイ  2: 同じPC2P",
+            "W/S/A または ↑/↓/←、ドラッグでも操作できます",
+          ]
+      : touch
+        ? [
+            compactTouch ? "タップで開始、左右ドラッグで移動" : "タップで開始、上下ドラッグで移動",
+            compactTouch ? "下へ引いて溜め、戻す/離すとショット" : "左へ引いて溜め、戻す/離すとショット",
+            "同じWi-Fi対戦は両端末で開いてタップ開始",
+          ]
+        : [
+            "1P: W/S/A・ドラッグ  2P: ↑/↓/←  P/Enterで一時停止",
+            "Space/クリックで1人プレイ  2キーで同じPCの2人対戦",
+            "3キーで同じWi-FiのLAN同期対戦",
+          ];
+
     ctx.fillStyle = "rgba(249, 252, 253, 0.84)";
-    ctx.fillRect(0, 0, FIELD_W, FIELD_H);
+    ctx.fillRect(0, 0, overlayW, overlayH);
 
     ctx.fillStyle = "#1f2a33";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "800 78px Inter, system-ui, sans-serif";
-    ctx.fillText(title, FIELD_W / 2, 254);
+    ctx.font = `800 ${compactTouch ? 82 : 78}px Inter, system-ui, sans-serif`;
+    ctx.fillText(title, centerX, compactTouch ? 360 : 254);
 
     ctx.fillStyle = "#49616e";
-    ctx.font = "500 27px Inter, system-ui, sans-serif";
-    ctx.fillText(subtitle, FIELD_W / 2, 323);
+    ctx.font = `500 ${compactTouch ? 30 : 27}px Inter, system-ui, sans-serif`;
+    ctx.fillText(displaySubtitle, centerX, compactTouch ? 466 : 323);
 
-    drawButtonHint(actionText, FIELD_W / 2, 405, 390);
+    drawButtonHint(
+      actionText,
+      centerX,
+      compactTouch ? 592 : 405,
+      compactTouch ? 520 : 390,
+      compactTouch ? { fontSize: 38, height: 74 } : {}
+    );
 
     ctx.fillStyle = "#607580";
-    ctx.font = "500 19px Inter, system-ui, sans-serif";
-    ctx.fillText("1P: W/S/A・ドラッグ  2P: ↑/↓/←  P/Enterで一時停止", FIELD_W / 2, 478);
-    ctx.fillText("Space/クリックで1人プレイ  2キーで同じPCの2人対戦", FIELD_W / 2, 510);
+    ctx.font = `500 ${compactTouch ? 34 : 19}px Inter, system-ui, sans-serif`;
+    menuLines.forEach((line, index) => {
+      ctx.fillText(line, centerX, (compactTouch ? 704 : 472) + index * (compactTouch ? 46 : 28));
+    });
+    if (compactTouch) {
+      return;
+    }
     ctx.fillStyle = state.easyMode ? "#1c84b4" : "#607580";
-    ctx.font = "800 18px Inter, system-ui, sans-serif";
-    ctx.fillText(`E: 簡単モード ${state.easyMode ? "ON" : "OFF"}（初期ON）`, FIELD_W / 2, 534);
+    ctx.font = `800 ${compactTouch ? 30 : 18}px Inter, system-ui, sans-serif`;
+    ctx.fillText(`E: 簡単モード ${state.easyMode ? "ON" : "OFF"}（LAN対戦開始時はOFF）`, centerX, compactTouch ? 640 : 584);
     ctx.fillStyle = state.trainingMode === "hard" ? "#ef5c43" : state.trainingMode === "training" ? "#1c84b4" : "#607580";
-    ctx.fillText(`T: ${trainingModeLabel()} / H: ハード`, FIELD_W / 2, 560);
+    ctx.fillText(`T: ${trainingModeLabel()} / H: ハード`, centerX, compactTouch ? 672 : 610);
     ctx.fillStyle = state.cursorControlMode ? "#1c84b4" : "#607580";
-    ctx.fillText(`C: カーソル追従 ${state.cursorControlMode ? "ON" : "OFF"}`, FIELD_W / 2, 586);
+    ctx.fillText(`C: カーソル追従 ${state.cursorControlMode ? "ON" : "OFF"}`, centerX, compactTouch ? 704 : 636);
   }
 
   function drawPointNotice() {
     if (state.mode !== "point") return;
 
-    const sideLabel = state.lastPoint === "player" ? "あなたのゴール" : "相手のゴール";
+    const lastSide = state.lastPoint === "opponent" ? "right" : "left";
+    const sideLabel = isMobilePortraitView()
+      ? (lastSide === portraitBottomSide() ? "あなたのゴール" : "相手のゴール")
+      : state.lastPoint === "player" ? "あなたのゴール" : "相手のゴール";
     const label = `${sideLabel} +${formatScore(state.lastPointAmount)}`;
+    const display = displaySize();
     ctx.fillStyle = "rgba(249, 252, 253, 0.72)";
-    ctx.fillRect(0, FIELD_H / 2 - 58, FIELD_W, 116);
+    ctx.fillRect(0, display.height / 2 - 58, display.width, 116);
     ctx.fillStyle = "#1f2a33";
     ctx.font = "800 42px Inter, system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(label, FIELD_W / 2, FIELD_H / 2);
+    ctx.fillText(label, display.width / 2, display.height / 2);
   }
 
   function drawTutorialBubbles() {
@@ -1623,6 +1786,25 @@
     const releaseActive = isReleaseMode();
     const w = releaseActive ? 390 : 300;
     const h = releaseActive ? 92 : 46;
+
+    if (isMobilePortraitView()) {
+      const display = displaySize();
+      const label = isNetworkGame()
+        ? (network.side === "right" ? "LAN YOU" : network.side === "left" ? "LAN YOU" : "WATCH")
+        : "YOU";
+      drawHudPanel(
+        localPaddle(),
+        display.width / 2 - w / 2,
+        display.height - (releaseActive ? 246 : 168),
+        w,
+        h,
+        label,
+        "#ef5c43",
+        true
+      );
+      return;
+    }
+
     const y = FIELD_H - (releaseActive ? 128 : 82);
 
     if (isLocalTwoPlayer()) {
@@ -1635,16 +1817,24 @@
       return;
     }
 
+    if (isNetworkGame()) {
+      const label = network.side === "right" ? "LAN RIGHT" : network.side === "left" ? "LAN LEFT" : "WATCH";
+      const accent = network.side === "right" ? "#ef5c43" : "#1c84b4";
+      drawHudPanel(localPaddle(), FIELD_W / 2 - w / 2, y, w, h, label, accent, true);
+      return;
+    }
+
     drawHudPanel(localPaddle(), FIELD_W / 2 - w / 2, y, w, h, "PADDLE", "#ef5c43", true);
   }
 
   function drawVersion() {
+    const display = displaySize();
     ctx.save();
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
     ctx.fillStyle = "rgba(31, 42, 51, 0.36)";
     ctx.font = "700 13px Inter, system-ui, sans-serif";
-    ctx.fillText(GAME_VERSION, FIELD_W - 20, FIELD_H - 14);
+    ctx.fillText(GAME_VERSION, display.width - 20, display.height - 14);
     ctx.restore();
   }
 
@@ -1654,7 +1844,10 @@
       label = "LOCAL 2P / 同じPCで対戦中";
     } else if (isNetworkGame()) {
       const sideLabel = network.side === "right" ? "RIGHT" : network.side === "left" ? "LEFT" : "WATCH";
-      const peerLabel = network.playerCount >= 2 ? "対戦中" : "相手待ち";
+      const peerLabel = state.lanDuelActive
+        ? (network.playerCount >= 2 ? "同期対戦中" : "相手待ち")
+        : state.lanDuelArmed ? "スマホ接続待ち"
+          : (network.playerCount >= 2 ? "3でLAN対戦" : "3でスマホ待ち");
       label = `LAN ${sideLabel} / ${peerLabel}`;
     } else if (network.lastError) {
       label = "SOLO / LAN未接続";
@@ -1674,27 +1867,53 @@
     ctx.textBaseline = "bottom";
     ctx.fillStyle = "rgba(31, 42, 51, 0.44)";
     ctx.font = "700 13px Inter, system-ui, sans-serif";
-    ctx.fillText(label, 20, FIELD_H - 14);
+    ctx.fillText(label, 20, displaySize().height - 14);
     ctx.restore();
   }
 
-  function render() {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, FIELD_W, FIELD_H);
+  function applyPortraitBoardTransform() {
+    if (portraitBottomSide() === "right") {
+      ctx.translate(FIELD_H, 0);
+      ctx.rotate(Math.PI / 2);
+    } else {
+      ctx.translate(0, FIELD_W);
+      ctx.rotate(-Math.PI / 2);
+    }
+  }
+
+  function drawBoardElements({ portrait = false } = {}) {
     drawField();
-    drawScore();
+    if (!portrait) {
+      drawScore();
+    }
     drawPaddle(state.player, "#1c84b4", "rgba(28, 132, 180, 0.28)");
     drawPaddle(state.opponent, "#283742", "rgba(40, 55, 66, 0.24)");
     drawBallTrail();
     drawBall();
-    drawCenterHitEffect();
+    if (!portrait) {
+      drawCenterHitEffect();
+    }
     drawDragGuide();
-    drawSpinNotice();
+    if (!portrait) {
+      drawSpinNotice();
+    }
+  }
+
+  function drawOverlays() {
     drawPointNotice();
-    drawHud();
+    if (state.mode !== "menu") {
+      drawHud();
+    }
 
     if (state.mode === "menu") {
-      drawOverlay("PING PONG", "5ゴールで終了。最初から解放モードで勝負します。", "Space: 1P / 2: 2P");
+      const subtitle = isNetworkGame()
+        ? "2つの端末でLEFT/RIGHTに分かれて同期対戦します。"
+        : "5ゴールで終了。最初から解放モードで勝負します。";
+      const touch = isTouchDevice();
+      const actionText = touch
+        ? (isNetworkGame() ? (state.lanDuelArmed ? "スマホ接続待ち" : "タップ: LAN対戦待機") : "タップ: 開始")
+        : (isNetworkGame() ? (state.lanDuelArmed ? "スマホ接続待ち" : "Space / 3: スマホ待ちLAN") : "Space: 1P / 2: 2P / 3: LAN");
+      drawOverlay("PING PONG", subtitle, actionText);
     } else if (state.mode === "paused") {
       drawOverlay("PAUSE", "ラリーはここで止まっています。", "P / Enter / Spaceで再開");
     } else if (state.mode === "gameover") {
@@ -1703,9 +1922,30 @@
       drawOverlay(title, `${formatScore(state.player.score)} - ${formatScore(state.opponent.score)}`, "Spaceで再戦");
     }
 
-    drawTutorialBubbles();
+    if (!isMobilePortraitView()) {
+      drawTutorialBubbles();
+    }
     drawNetworkStatus();
     drawVersion();
+  }
+
+  function render() {
+    const display = displaySize();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, display.width, display.height);
+
+    if (isMobilePortraitView()) {
+      ctx.save();
+      applyPortraitBoardTransform();
+      drawBoardElements({ portrait: true });
+      ctx.restore();
+      drawPortraitScore();
+      drawOverlays();
+      return;
+    }
+
+    drawBoardElements();
+    drawOverlays();
   }
 
   function frame(now) {
@@ -1717,17 +1957,40 @@
   }
 
   function resizeCanvas() {
+    const display = displaySize();
     dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
-    canvas.width = Math.round(FIELD_W * dpr);
-    canvas.height = Math.round(FIELD_H * dpr);
+    canvas.width = Math.round(display.width * dpr);
+    canvas.height = Math.round(display.height * dpr);
+    canvas.style.aspectRatio = `${display.width} / ${display.height}`;
+    if (canvas.parentElement) {
+      canvas.parentElement.style.aspectRatio = `${display.width} / ${display.height}`;
+    }
     render();
   }
 
   function canvasPoint(event) {
     const rect = canvas.getBoundingClientRect();
+    const display = displaySize();
+    const displayX = ((event.clientX - rect.left) / rect.width) * display.width;
+    const displayY = ((event.clientY - rect.top) / rect.height) * display.height;
+
+    if (!isMobilePortraitView()) {
+      return {
+        x: displayX,
+        y: displayY,
+      };
+    }
+
+    if (portraitBottomSide() === "right") {
+      return {
+        x: clamp(displayY, 0, FIELD_W),
+        y: clamp(FIELD_H - displayX, 0, FIELD_H),
+      };
+    }
+
     return {
-      x: ((event.clientX - rect.left) / rect.width) * FIELD_W,
-      y: ((event.clientY - rect.top) / rect.height) * FIELD_H,
+      x: clamp(FIELD_W - displayY, 0, FIELD_W),
+      y: clamp(displayX, 0, FIELD_H),
     };
   }
 
@@ -1835,14 +2098,21 @@
 
     if (state.mode === "playing") {
       state.mode = "paused";
+      forceNetworkSnapshot();
     } else if (state.mode === "paused") {
       state.mode = "playing";
       lastTime = performance.now();
+      forceNetworkSnapshot();
     }
   }
 
   function handleStartResume() {
     resumeAudio();
+
+    if (isNetworkGame() && state.mode === "menu") {
+      startLanDuelGame();
+      return;
+    }
 
     if (isNetworkGame() && !network.host) {
       sendNetworkControl("start");
@@ -1852,7 +2122,11 @@
     if (state.mode === "menu") {
       startGame({ localTwoPlayer: false });
     } else if (state.mode === "gameover") {
-      startGame({ localTwoPlayer: isLocalTwoPlayer() });
+      if (isNetworkGame()) {
+        startLanDuelGame();
+      } else {
+        startGame({ localTwoPlayer: isLocalTwoPlayer() });
+      }
     } else if (state.mode === "paused") {
       state.mode = "playing";
       lastTime = performance.now();
@@ -1922,6 +2196,8 @@
       lastPointAmount: state.lastPointAmount,
       lastScoreReason: state.lastScoreReason,
       winner: state.winner,
+      lanDuelArmed: state.lanDuelArmed,
+      lanDuelActive: state.lanDuelActive,
       easyMode: state.easyMode,
       cursorControlMode: state.cursorControlMode,
       trainingMode: state.trainingMode,
@@ -1945,6 +2221,8 @@
     state.lastPointAmount = snapshot.lastPointAmount;
     state.lastScoreReason = snapshot.lastScoreReason;
     state.winner = snapshot.winner;
+    state.lanDuelArmed = Boolean(snapshot.lanDuelArmed);
+    state.lanDuelActive = Boolean(snapshot.lanDuelActive);
     state.easyMode = Boolean(snapshot.easyMode);
     state.cursorControlMode = Boolean(snapshot.cursorControlMode);
     state.trainingMode = snapshot.trainingMode || "normal";
@@ -1971,21 +2249,30 @@
     sendNetworkMessage({ type: "snapshot", snapshot: createNetworkSnapshot() });
   }
 
+  function forceNetworkSnapshot() {
+    if (!isNetworkHost()) return;
+
+    network.lastSnapshotAt = -Infinity;
+    syncNetworkSnapshot();
+  }
+
   function handleNetworkMessage(message) {
     if (message.type === "welcome") {
       network.connected = true;
       network.side = message.side;
       network.host = Boolean(message.host);
       network.clients = message.clients || [];
-      network.playerCount = network.clients.filter((client) => client.side === "left" || client.side === "right").length;
+      network.playerCount = networkPlayerCount();
       network.urls = message.urls || [];
       network.lastError = null;
+      maybeAutoStartArmedLanDuel();
       return;
     }
 
     if (message.type === "peers") {
       network.clients = message.clients || [];
-      network.playerCount = network.clients.filter((client) => client.side === "left" || client.side === "right").length;
+      network.playerCount = networkPlayerCount();
+      maybeAutoStartArmedLanDuel();
       return;
     }
 
@@ -2006,6 +2293,10 @@
     if (message.type === "control" && network.host) {
       if (message.action === "start") {
         handleStartResume();
+      } else if (message.action === "start-lan-duel") {
+        startLanDuelGame();
+      } else if (message.action === "restart-lan-duel") {
+        startLanDuelGame();
       } else if (message.action === "pause-toggle") {
         togglePause();
       }
@@ -2084,6 +2375,10 @@
     }
   });
 
+  canvas.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
   window.addEventListener("keydown", (event) => {
     const wasPressed = keys.has(event.code);
     keys.add(event.code);
@@ -2097,7 +2392,15 @@
       togglePause();
     } else if (event.code === "KeyR") {
       resumeAudio();
-      startGame({ localTwoPlayer: isLocalTwoPlayer() });
+      if (isNetworkGame()) {
+        if (network.host) {
+          startLanDuelGame();
+        } else {
+          sendNetworkControl("restart-lan-duel");
+        }
+      } else {
+        startGame({ localTwoPlayer: isLocalTwoPlayer() });
+      }
     } else if (event.code === "KeyE") {
       event.preventDefault();
       state.easyMode = !state.easyMode;
@@ -2113,6 +2416,9 @@
     } else if (event.code === "Digit2") {
       event.preventDefault();
       startLocalTwoPlayerGame();
+    } else if (event.code === "Digit3") {
+      event.preventDefault();
+      startLanDuelGame();
     } else if (event.code === "Digit1") {
       event.preventDefault();
       startGame({ localTwoPlayer: false });
@@ -2182,9 +2488,16 @@
     const payload = {
       coordinateSystem: "origin top-left, x right, y down, logical canvas 1280x720",
       version: GAME_VERSION,
+      viewport: viewportInfo(),
       mode: state.mode,
-      playMode: isLocalTwoPlayer() ? "local-two-player" : isNetworkGame() ? "lan" : "solo",
+      playMode: isLocalTwoPlayer()
+        ? "local-two-player"
+        : isNetworkGame()
+          ? (state.lanDuelActive ? "lan-duel" : state.lanDuelArmed ? "lan-waiting" : "lan-lobby")
+          : "solo",
       localTwoPlayer: state.localTwoPlayer,
+      lanDuelArmed: state.lanDuelArmed,
+      lanDuelActive: state.lanDuelActive,
       easyMode: {
         active: state.easyMode,
         assistedSide: state.easyMode ? "left" : null,
@@ -2328,6 +2641,9 @@
         side: network.side,
         host: network.host,
         playerCount: network.playerCount,
+        canStartLanDuel: canStartLanDuel(),
+        lanDuelArmed: state.lanDuelArmed,
+        lanDuelActive: state.lanDuelActive,
         clients: network.clients,
         urls: network.urls,
         lastError: network.lastError,
