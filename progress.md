@@ -413,6 +413,30 @@ Original prompt: 昔からあるピンポンゲームを作って。webでプレ
   - Opening a phone-sized second page auto-started both pages in `playMode:"lan-duel"`, with host `side:"left"` and phone `side:"right"`.
   - Phone portrait still reported `bottomSide:"right"` so the phone player remains at the bottom.
   - Standard web-game client run completed and showed `version:"v1.8.6"`.
+- Added opponent device display:
+  - Bumped the displayed game version to `v1.8.7`.
+  - The LAN server now classifies each connecting browser from its User-Agent as `iPhone`, `iPad`, `Android`, `Android Tablet`, `Mac`, `Windows PC`, `Chromebook`, `Linux PC`, or `Unknown`.
+  - Public peer lists now include `deviceLabel`.
+  - The game UI displays only the opponent device in the lower-left LAN status, such as `相手:iPhone`; the local device is not shown in the UI.
+  - Exported `network.opponentDeviceLabel` via `render_game_to_text`.
+  - README now notes that only broad device labels are shown, not exact hardware model names.
+- Verified with Playwright and syntax checks:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Two-page LAN test with Mac and iPhone user agents showed host `opponentDeviceLabel:"iPhone"` and phone `opponentDeviceLabel:"Mac"`.
+  - Visual checks confirmed the host status shows `相手:iPhone` and the phone status shows `相手:Mac`.
+  - Standard web-game client run completed with no new console errors.
+- Updated smartphone portrait perspective:
+  - Bumped the displayed game version to `v1.8.8`.
+  - Portrait mode now places the local player at the top and the opponent at the bottom.
+  - Portrait score labels, goal notices, HUD placement, and `render_game_to_text.viewport.topSide/bottomSide` now reflect that top/bottom perspective.
+  - Portrait touch copy and charge input now use upward pull for the local top player.
+  - `render_game_to_text.smashMode` now reports the local paddle, so LAN RIGHT clients report their own charge state instead of the left paddle.
+- Verified the self-top portrait update:
+  - `node --check main.js` and `node --check server.js` passed.
+  - Solo iPhone-sized portrait check showed `topSide:"left"` and `bottomSide:"right"` with `YOU` at the top and `RIVAL` at the bottom.
+  - Two-page LAN check showed the host as `LAN LEFT` and the phone as `LAN RIGHT`; the phone reported `topSide:"right"` and `bottomSide:"left"`.
+  - Upward pull in portrait charged the local paddle in both solo and LAN RIGHT checks.
+  - Standard web-game client completed on the local LAN server and reported `version:"v1.8.8"`.
 
 ## TODO
 

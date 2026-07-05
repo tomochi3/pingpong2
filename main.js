@@ -4,7 +4,7 @@
 
   const FIELD_W = 1280;
   const FIELD_H = 720;
-  const GAME_VERSION = "v1.8.6";
+  const GAME_VERSION = "v1.8.8";
   const GOALS_TO_END = 5;
   const TUTORIAL_DURATION = 4.2;
   const PLAYER_MAX_SPEED = 900;
@@ -219,8 +219,16 @@
     return isTouchDevice() && window.innerHeight > window.innerWidth;
   }
 
-  function portraitBottomSide() {
+  function portraitPlayerSide() {
     return network.side === "right" ? "right" : "left";
+  }
+
+  function portraitOpponentSide() {
+    return portraitPlayerSide() === "right" ? "left" : "right";
+  }
+
+  function portraitBottomSide() {
+    return portraitOpponentSide();
   }
 
   function displaySize() {
@@ -242,6 +250,7 @@
       coarsePointer: isTouchDevice(),
       orientation: window.innerWidth >= window.innerHeight ? "landscape" : "portrait",
       portraitBoard: isMobilePortraitView(),
+      topSide: isMobilePortraitView() ? portraitPlayerSide() : null,
       bottomSide: isMobilePortraitView() ? portraitBottomSide() : null,
     };
   }
@@ -264,6 +273,17 @@
 
   function hasNetworkRightPlayer() {
     return network.clients.some((client) => client.side === "right");
+  }
+
+  function opponentNetworkClient() {
+    if (!isNetworkGame() || network.side === "spectator") return null;
+    const opponentSide = network.side === "right" ? "left" : "right";
+    return network.clients.find((client) => client.side === opponentSide) || null;
+  }
+
+  function opponentDeviceLabel() {
+    const opponent = opponentNetworkClient();
+    return opponent && opponent.deviceLabel ? opponent.deviceLabel : null;
   }
 
   function canStartLanDuel() {
@@ -364,7 +384,7 @@
     const dy = dragControl.y - dragControl.startY;
     const up = dy < -DRAG_MOVE_DEADZONE;
     const down = dy > DRAG_MOVE_DEADZONE;
-    const portraitRightCharge = isMobilePortraitView() && portraitBottomSide() === "right";
+    const portraitRightCharge = isMobilePortraitView() && portraitPlayerSide() === "right";
     const smash = portraitRightCharge
       ? dx > DRAG_SMASH_DEADZONE
       : dx < -DRAG_SMASH_DEADZONE;
@@ -1335,13 +1355,13 @@
   }
 
   function scoreSideLabel(side) {
-    return side === portraitBottomSide() ? "YOU" : "RIVAL";
+    return side === portraitPlayerSide() ? "YOU" : "RIVAL";
   }
 
   function drawPortraitScore() {
     const display = displaySize();
     const bottomSide = portraitBottomSide();
-    const topSide = bottomSide === "right" ? "left" : "right";
+    const topSide = portraitPlayerSide();
 
     ctx.save();
     ctx.textAlign = "center";
@@ -1603,7 +1623,7 @@
     const overlayH = display.height;
     const centerX = overlayW / 2;
     const displaySubtitle = compactTouch
-      ? (isNetworkGame() ? "敵は上、自分は下。LAN対戦" : "敵は上、自分は下。5ゴールで終了")
+      ? (isNetworkGame() ? "自分は上、相手は下。LAN対戦" : "自分は上、相手は下。5ゴールで終了")
       : subtitle;
     const menuLines = isNetworkGame()
       ? touch
@@ -1611,7 +1631,7 @@
             "LAN: 先に開いた端末がLEFT、次の端末がRIGHT",
             `現在: ${network.side.toUpperCase()} / ${network.playerCount}人接続`,
             state.lanDuelArmed ? "スマホ接続待ち。入ると自動開始" : "タップでスマホ待ちLAN対戦を選択",
-            compactTouch ? "左右ドラッグで移動、下へ引いて溜めショット" : "上下ドラッグで移動、左ドラッグで溜めショット",
+            compactTouch ? "左右ドラッグで移動、上へ引いて溜めショット" : "上下ドラッグで移動、左ドラッグで溜めショット",
           ]
         : [
             "LAN: 先に開いた端末がLEFT、次の端末がRIGHT",
@@ -1622,7 +1642,7 @@
       : touch
         ? [
             compactTouch ? "タップで開始、左右ドラッグで移動" : "タップで開始、上下ドラッグで移動",
-            compactTouch ? "下へ引いて溜め、戻す/離すとショット" : "左へ引いて溜め、戻す/離すとショット",
+            compactTouch ? "上へ引いて溜め、戻す/離すとショット" : "左へ引いて溜め、戻す/離すとショット",
             "同じWi-Fi対戦は両端末で開いてタップ開始",
           ]
         : [
@@ -1674,7 +1694,7 @@
 
     const lastSide = state.lastPoint === "opponent" ? "right" : "left";
     const sideLabel = isMobilePortraitView()
-      ? (lastSide === portraitBottomSide() ? "あなたのゴール" : "相手のゴール")
+      ? (lastSide === portraitPlayerSide() ? "あなたのゴール" : "相手のゴール")
       : state.lastPoint === "player" ? "あなたのゴール" : "相手のゴール";
     const label = `${sideLabel} +${formatScore(state.lastPointAmount)}`;
     const display = displaySize();
@@ -1795,7 +1815,7 @@
       drawHudPanel(
         localPaddle(),
         display.width / 2 - w / 2,
-        display.height - (releaseActive ? 246 : 168),
+        releaseActive ? 188 : 154,
         w,
         h,
         label,
@@ -1844,11 +1864,15 @@
       label = "LOCAL 2P / 同じPCで対戦中";
     } else if (isNetworkGame()) {
       const sideLabel = network.side === "right" ? "RIGHT" : network.side === "left" ? "LEFT" : "WATCH";
+      const opponentDevice = opponentDeviceLabel();
       const peerLabel = state.lanDuelActive
         ? (network.playerCount >= 2 ? "同期対戦中" : "相手待ち")
         : state.lanDuelArmed ? "スマホ接続待ち"
           : (network.playerCount >= 2 ? "3でLAN対戦" : "3でスマホ待ち");
       label = `LAN ${sideLabel} / ${peerLabel}`;
+      if (opponentDevice) {
+        label += ` / 相手:${opponentDevice}`;
+      }
     } else if (network.lastError) {
       label = "SOLO / LAN未接続";
     }
@@ -2616,13 +2640,13 @@
       },
       smashMode: {
         charging: isSmashPressed(),
-        charge: Math.round(state.player.smashCharge),
-        ready: state.player.smashReadyTimer > 0,
-        readyTimer: round2(state.player.smashReadyTimer),
-        lastCharge: Math.round(state.player.smashLastCharge),
-        lastSpeedBonus: Math.round(state.player.smashLastSpeedBonus),
-        storedSpinVelocity: Math.round(state.player.smashStoredSpinVelocity),
-        releaseSpinVelocity: Math.round(state.player.smashReleaseSpinVelocity),
+        charge: Math.round(localPaddle().smashCharge),
+        ready: localPaddle().smashReadyTimer > 0,
+        readyTimer: round2(localPaddle().smashReadyTimer),
+        lastCharge: Math.round(localPaddle().smashLastCharge),
+        lastSpeedBonus: Math.round(localPaddle().smashLastSpeedBonus),
+        storedSpinVelocity: Math.round(localPaddle().smashStoredSpinVelocity),
+        releaseSpinVelocity: Math.round(localPaddle().smashReleaseSpinVelocity),
         releaseWindow: SMASH_RELEASE_WINDOW,
       },
       dragControl: {
@@ -2644,6 +2668,7 @@
         canStartLanDuel: canStartLanDuel(),
         lanDuelArmed: state.lanDuelArmed,
         lanDuelActive: state.lanDuelActive,
+        opponentDeviceLabel: opponentDeviceLabel(),
         clients: network.clients,
         urls: network.urls,
         lastError: network.lastError,

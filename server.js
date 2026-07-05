@@ -38,7 +38,20 @@ function publicClientList() {
     id: client.id,
     side: client.side,
     host: client.host,
+    deviceLabel: client.deviceLabel,
   }));
+}
+
+function deviceLabelFromUserAgent(userAgent = "") {
+  const ua = String(userAgent);
+  if (/iPhone/i.test(ua)) return "iPhone";
+  if (/iPad/i.test(ua) || (/Macintosh/i.test(ua) && /Mobile\/\w+/i.test(ua))) return "iPad";
+  if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? "Android" : "Android Tablet";
+  if (/Windows/i.test(ua)) return "Windows PC";
+  if (/Macintosh|Mac OS X/i.test(ua)) return "Mac";
+  if (/CrOS/i.test(ua)) return "Chromebook";
+  if (/Linux/i.test(ua)) return "Linux PC";
+  return "Unknown";
 }
 
 function assignSide() {
@@ -260,6 +273,7 @@ server.on("upgrade", (req, socket) => {
     id,
     side,
     host: side === "left",
+    deviceLabel: deviceLabelFromUserAgent(req.headers["user-agent"]),
     socket,
     receiveBuffer: Buffer.alloc(0),
   };
@@ -273,7 +287,7 @@ server.on("upgrade", (req, socket) => {
     urls: localAddresses().map((address) => `http://${address}:${PORT}/`),
     clients: publicClientList(),
   });
-  broadcast({ type: "join", id, side, host: client.host }, id);
+  broadcast({ type: "join", id, side, host: client.host, deviceLabel: client.deviceLabel }, id);
   broadcastPeers();
 
   socket.on("data", (buffer) => {
